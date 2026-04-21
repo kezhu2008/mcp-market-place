@@ -159,7 +159,7 @@ async def disable_bot(bot_id: str, p: Principal = Depends(current_principal)) ->
     return _to_model(updated)
 
 
-@router.delete("/{bot_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{bot_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_bot(bot_id: str, p: Principal = Depends(current_principal)) -> None:
     item = dynamo.get_bot(p.tenant_id, bot_id)
     if not item:

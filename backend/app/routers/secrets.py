@@ -20,7 +20,7 @@ def _now() -> str:
 
 def _to_model(item: dict[str, Any]) -> Secret:
     # Strip DDB keys, never expose SM value.
-    data = {k: v for k, v in item.items() if k not in ("PK", "SK", "ttl")}
+    data: dict[str, Any] = {k: v for k, v in item.items() if k not in ("PK", "SK", "ttl")}
     return Secret(**data)
 
 
@@ -34,7 +34,7 @@ async def create_secret(body: SecretCreate, p: Principal = Depends(current_princ
     secret_id = f"sec_{ULID().hex[:10]}"
     arn = secrets_manager.create(p.tenant_id, secret_id, body.value)
     now = _now()
-    item = {
+    item: dict[str, Any] = {
         "id": secret_id,
         "tenantId": p.tenant_id,
         "ownerUserId": p.user_id,
@@ -67,7 +67,7 @@ async def rotate_secret(
     return _to_model(refreshed)
 
 
-@router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_secret(secret_id: str, p: Principal = Depends(current_principal)) -> None:
     item = dynamo.get_secret_meta(p.tenant_id, secret_id)
     if not item:

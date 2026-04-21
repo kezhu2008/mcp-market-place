@@ -1,5 +1,5 @@
-variable "name"          { type = string }
-variable "admin_email"   { type = string }
+variable "name" { type = string }
+variable "admin_email" { type = string }
 variable "redirect_urls" { type = list(string) }
 
 resource "aws_cognito_user_pool" "pool" {
@@ -57,7 +57,7 @@ resource "aws_cognito_user" "admin" {
 }
 
 output "user_pool_id" { value = aws_cognito_user_pool.pool.id }
-output "client_id"    { value = aws_cognito_user_pool_client.client.id }
-output "domain"       { value = "${aws_cognito_user_pool_domain.domain.domain}.auth.${data.aws_region.current.name}.amazoncognito.com" }
+output "client_id" { value = aws_cognito_user_pool_client.client.id }
+output "domain" { value = "${aws_cognito_user_pool_domain.domain.domain}.auth.${data.aws_region.current.name}.amazoncognito.com" }
 
 data "aws_region" "current" {}

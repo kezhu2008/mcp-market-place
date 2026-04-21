@@ -32,13 +32,12 @@ EOF
 }
 
 inputs = {
-  project          = "mcp-platform"
-  env              = "prod"
-  region           = "ap-southeast-2"
-  aws_account_id   = get_env("AWS_ACCOUNT_ID", "")
-  admin_email      = get_env("ADMIN_EMAIL", "admin@example.com")
-  github_repo      = "kezhu2008/mcp-market-place"
-  amplify_token    = get_env("AMPLIFY_GH_TOKEN", "")
-  frontend_domain  = get_env("FRONTEND_DOMAIN", "")
+  project           = "mcp-platform"
+  env               = "prod"
+  region            = "ap-southeast-2"
+  admin_email       = get_env("ADMIN_EMAIL", "admin@example.com")
+  github_repo       = "kezhu2008/mcp-market-place"
+  amplify_token     = get_env("AMPLIFY_GH_TOKEN", "")
+  frontend_domain   = get_env("FRONTEND_DOMAIN", "")
   default_tenant_id = "t_default"
 }
