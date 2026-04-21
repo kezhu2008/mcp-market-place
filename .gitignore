@@ -55,3 +55,4 @@ htmlcov/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+frontend/tsconfig.tsbuildinfo

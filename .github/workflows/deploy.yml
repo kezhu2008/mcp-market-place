@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 env:
@@ -22,7 +21,8 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       # Python — used for building lambda zips
@@ -32,8 +32,6 @@ jobs:
 
       # Node — to build Next.js for Amplify (Amplify builds too, but we test locally)
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -70,7 +68,6 @@ jobs:
         env:
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
           TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           AMPLIFY_GH_TOKEN: ${{ secrets.AMPLIFY_GH_TOKEN }}
         run: |

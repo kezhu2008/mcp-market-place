@@ -10,10 +10,6 @@ variable "region" {
   type = string
 }
 
-variable "aws_account_id" {
-  type = string
-}
-
 variable "admin_email" {
   type = string
 }
@@ -38,11 +34,14 @@ variable "default_tenant_id" {
   default = "t_default"
 }
 
+data "aws_caller_identity" "current" {}
+
 locals {
+  account_id     = data.aws_caller_identity.current.account_id
   prefix         = "${var.project}-${var.env}"
   table_name     = "${var.project}_${var.env}"
   secrets_prefix = var.project
-  secrets_arn    = "arn:aws:secretsmanager:${var.region}:${var.aws_account_id}:secret:${local.secrets_prefix}/*"
+  secrets_arn    = "arn:aws:secretsmanager:${var.region}:${local.account_id}:secret:${local.secrets_prefix}/*"
   redirect_urls = var.frontend_domain != "" ? [
     "https://${var.frontend_domain}/sign-in",
     "http://localhost:3000/sign-in",

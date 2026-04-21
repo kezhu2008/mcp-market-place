@@ -1,46 +1,81 @@
 # Bootstrap (one-time, manual)
 
-Run once per AWS account before any CI/CD can work. Creates:
-
-- S3 bucket for Terraform remote state (versioned, encrypted)
-- DynamoDB table for state locks
-- GitHub OIDC identity provider
-- IAM role `github-actions-deploy` trusting the `kezhu2008/mcp-market-place` repo
-
-After this, the main workflow in `.github/workflows/deploy.yml` takes over — no manual AWS console work is needed for subsequent deploys.
+Run once per AWS account before any CI/CD can work. Creates the Terraform state bucket + lock table. After this, `infra/envs/prod` owns everything else.
 
 ## Prereqs
 
-- AWS CLI configured (SSO profile or access key) with admin-ish rights in the target account.
+- AWS CLI configured with admin-ish rights.
 - Terraform ≥ 1.7.
 
-## Steps
+## Step 1 — create the state backend
 
 ```bash
 cd infra/bootstrap
-
-# 1. Copy the example tfvars and fill in your account id.
 cp example.tfvars terraform.tfvars
-$EDITOR terraform.tfvars
+$EDITOR terraform.tfvars                  # usually no edits needed
 
-# 2. Init (local backend — NOT S3; this module creates the bucket).
 terraform init -backend=false
-
-# 3. Plan + apply.
-terraform plan  -var-file=terraform.tfvars -out=plan
-terraform apply plan
+terraform apply
 ```
 
-## Outputs to copy into `infra/envs/prod/terragrunt.hcl`
+Outputs:
+- `state_bucket`  → paste into GitHub secret `TF_STATE_BUCKET`
+- `lock_table`    → paste into GitHub secret `TF_LOCK_TABLE`
 
-- `state_bucket` → `remote_state.config.bucket`
-- `lock_table`   → `remote_state.config.dynamodb_table`
-- `deploy_role_arn` → paste into GitHub secrets as `AWS_DEPLOY_ROLE_ARN`
+## Step 2 — create a deploy IAM user + access key
 
-## GitHub OIDC trust
+Create an IAM user `mcp-platform-deploy` with programmatic access and the policy below attached inline (or as a managed policy). Save the access key id + secret somewhere safe — you'll paste them into GitHub secrets next.
 
-The created role trusts tokens with:
-- `repo:kezhu2008/mcp-market-place:ref:refs/heads/main`
-- `repo:kezhu2008/mcp-market-place:pull_request`
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TFStateAccess",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::mcp-platform-tfstate-<ACCOUNT_ID>",
+        "arn:aws:s3:::mcp-platform-tfstate-<ACCOUNT_ID>/*"
+      ]
+    },
+    {
+      "Sid": "TFLockAccess",
+      "Effect": "Allow",
+      "Action": ["dynamodb:*"],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:<ACCOUNT_ID>:table/mcp-platform-tflock"
+    },
+    {
+      "Sid": "ProjectWrite",
+      "Effect": "Allow",
+      "Action": [
+        "iam:*","lambda:*","apigateway:*","dynamodb:*","cognito-idp:*",
+        "secretsmanager:*","s3:*","amplify:*","logs:*","cloudwatch:*",
+        "cloudformation:*","sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
 
-Adjust via `var.github_repo` if your fork differs.
+Tighten `ProjectWrite` to specific resource prefixes once you've applied once and know the exact ARNs.
+
+## Step 3 — set GitHub secrets
+
+In `Settings → Secrets and variables → Actions`, add:
+
+| Secret | Value |
+|---|---|
+| `AWS_ACCESS_KEY_ID`  | from Step 2 |
+| `AWS_SECRET_ACCESS_KEY` | from Step 2 |
+| `TF_STATE_BUCKET` | Step 1 output |
+| `TF_LOCK_TABLE` | Step 1 output |
+| `ADMIN_EMAIL` | the email to seed into Cognito as the sole admin |
+| `AMPLIFY_GH_TOKEN` | GitHub PAT with `repo` scope, used by Amplify to clone + webhook |
+
+Merging to `main` now runs `deploy.yml` which applies `infra/envs/prod`.
+
+## Rotation
+
+Rotate the deploy user's access key quarterly. The only GitHub-side change is updating two secrets — no infra edits.

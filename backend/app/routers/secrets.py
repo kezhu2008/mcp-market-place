@@ -20,7 +20,7 @@ def _now() -> str:
 
 def _to_model(item: dict[str, Any]) -> Secret:
     # Strip DDB keys, never expose SM value.
-    data = {k: v for k, v in item.items() if k not in ("PK", "SK", "ttl")}
+    data: dict[str, Any] = {k: v for k, v in item.items() if k not in ("PK", "SK", "ttl")}
     return Secret(**data)
 
 
@@ -34,7 +34,7 @@ async def create_secret(body: SecretCreate, p: Principal = Depends(current_princ
     secret_id = f"sec_{ULID().hex[:10]}"
     arn = secrets_manager.create(p.tenant_id, secret_id, body.value)
     now = _now()
-    item = {
+    item: dict[str, Any] = {
         "id": secret_id,
         "tenantId": p.tenant_id,
         "ownerUserId": p.user_id,
