@@ -1,0 +1,38 @@
+[project]
+name = "mcp-platform-webhook"
+version = "0.1.0"
+description = "Telegram webhook Lambda for MCP Platform"
+requires-python = ">=3.12"
+dependencies = [
+  "boto3==1.35.36",
+  "urllib3==2.2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.3",
+  "ruff==0.6.9",
+  "mypy==1.11.2",
+  "moto[dynamodb,secretsmanager]==5.0.16",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "S", "W"]
+# S310: urllib.request only used with hard-coded https Telegram URL.
+ignore = ["S101", "S310"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,88 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+
+jobs:
+  deploy:
+    name: deploy to prod
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Python — used for building lambda zips
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Node — to build Next.js for Amplify (Amplify builds too, but we test locally)
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: build backend lambda zip
+        run: ./scripts/build-backend.sh
+
+      - name: build webhook lambda zip
+        run: ./scripts/build-webhook.sh
+
+      - name: frontend install + typecheck
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+
+      - name: setup terragrunt
+        run: |
+          TG_VERSION=v0.66.9
+          curl -fsSL -o /usr/local/bin/terragrunt \
+            "https://github.com/gruntwork-io/terragrunt/releases/download/${TG_VERSION}/terragrunt_linux_amd64"
+          chmod +x /usr/local/bin/terragrunt
+
+      - name: terragrunt apply (prod)
+        working-directory: infra/envs/prod
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          AMPLIFY_GH_TOKEN: ${{ secrets.AMPLIFY_GH_TOKEN }}
+        run: |
+          terragrunt init -upgrade
+          terragrunt apply -auto-approve
+
+      - name: smoke test /health
+        working-directory: infra/envs/prod
+        run: |
+          API_URL="$(terragrunt output -raw api_url)"
+          echo "API_URL=$API_URL"
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$API_URL/health"; then echo "ok"; break; fi
+            sleep $((2**i))
+          done
