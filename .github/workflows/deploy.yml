@@ -75,6 +75,9 @@ jobs:
 
       - name: smoke test /health
         working-directory: infra/envs/prod
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
         run: |
           API_URL="$(terragrunt output -raw api_url)"
           echo "API_URL=$API_URL"
