@@ -70,8 +70,8 @@ jobs:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           AMPLIFY_GH_TOKEN: ${{ secrets.AMPLIFY_GH_TOKEN }}
         run: |
-          terragrunt init -upgrade
-          terragrunt apply -auto-approve
+          terragrunt init -upgrade --terragrunt-non-interactive
+          terragrunt apply -auto-approve --terragrunt-non-interactive
 
       - name: smoke test /health
         working-directory: infra/envs/prod

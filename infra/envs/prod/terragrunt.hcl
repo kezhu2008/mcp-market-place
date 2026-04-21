@@ -11,6 +11,9 @@ remote_state {
     region         = "ap-southeast-2"
     dynamodb_table = get_env("TF_LOCK_TABLE", "mcp-platform-tflock")
     encrypt        = true
+    # Bucket is provisioned by infra/bootstrap; terragrunt should not try to
+    # mutate its settings (it prompts y/n which EOFs in CI).
+    disable_bucket_update = true
   }
 }
 
