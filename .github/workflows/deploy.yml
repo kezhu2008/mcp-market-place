@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: build backend lambda zip
         run: ./scripts/build-backend.sh
@@ -45,7 +45,6 @@ jobs:
         run: ./scripts/build-webhook.sh
 
       - name: frontend install + typecheck
-        working-directory: frontend
         run: |
           pnpm install --frozen-lockfile
           pnpm lint
@@ -70,12 +69,19 @@ jobs:
           TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           AMPLIFY_GH_TOKEN: ${{ secrets.AMPLIFY_GH_TOKEN }}
+          # Cognito callback target. Hardcoded to the Amplify default domain;
+          # terraform can't derive this without a circular dep between
+          # cognito.callback_urls and amplify.default_domain.
+          FRONTEND_DOMAIN: main.d3q7jjrtvv9b6l.amplifyapp.com
         run: |
-          terragrunt init -upgrade
-          terragrunt apply -auto-approve
+          terragrunt init -upgrade --terragrunt-non-interactive
+          terragrunt apply -auto-approve --terragrunt-non-interactive
 
       - name: smoke test /health
         working-directory: infra/envs/prod
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
         run: |
           API_URL="$(terragrunt output -raw api_url)"
           echo "API_URL=$API_URL"

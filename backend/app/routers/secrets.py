@@ -67,7 +67,7 @@ async def rotate_secret(
     return _to_model(refreshed)
 
 
-@router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{secret_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_secret(secret_id: str, p: Principal = Depends(current_principal)) -> None:
     item = dynamo.get_secret_meta(p.tenant_id, secret_id)
     if not item:
