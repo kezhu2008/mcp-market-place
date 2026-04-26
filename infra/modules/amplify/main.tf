@@ -25,12 +25,9 @@ resource "aws_iam_role" "amplify" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
-      Principal = { Service = [
-        "amplify.amazonaws.com",
-        "codebuild.amazonaws.com",
-      ] }
-      Action = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "amplify.amazonaws.com" }
+      Action    = "sts:AssumeRole"
     }]
   })
 }
@@ -45,6 +42,7 @@ resource "aws_amplify_app" "app" {
   repository                  = "https://github.com/${var.repository}"
   access_token                = var.access_token
   iam_service_role_arn        = aws_iam_role.amplify.arn
+  platform                    = "WEB_COMPUTE"
   enable_branch_auto_build    = true
   enable_auto_branch_creation = false
 
