@@ -69,6 +69,10 @@ jobs:
           TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           AMPLIFY_GH_TOKEN: ${{ secrets.AMPLIFY_GH_TOKEN }}
+          # Cognito callback target. Hardcoded to the Amplify default domain;
+          # terraform can't derive this without a circular dep between
+          # cognito.callback_urls and amplify.default_domain.
+          FRONTEND_DOMAIN: main.d3q7jjrtvv9b6l.amplifyapp.com
         run: |
           terragrunt init -upgrade --terragrunt-non-interactive
           terragrunt apply -auto-approve --terragrunt-non-interactive
