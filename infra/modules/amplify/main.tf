@@ -52,12 +52,10 @@ applications:
           - node_modules/**/*
 YAML
 
-  # Amplify auto-creates a service role on first build. Don't let terraform
-  # clobber it on subsequent applies. Per AWS docs:
-  # https://docs.aws.amazon.com/amplify/latest/userguide/server-side-rendering-amplify.html
-  lifecycle {
-    ignore_changes = [iam_service_role_arn]
-  }
+  # iam_service_role_arn intentionally unset on this apply — let terraform
+  # detach the previously-broken role so Amplify auto-creates a fresh one
+  # on the next build. After that build succeeds, lifecycle.ignore_changes
+  # will be re-added so terraform doesn't clobber the auto-created role.
 }
 
 resource "aws_amplify_branch" "branch" {
