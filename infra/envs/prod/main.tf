@@ -106,6 +106,10 @@ module "amplify" {
   repository   = var.github_repo
   access_token = var.amplify_token
   env = {
+    # Monorepo: tells Amplify the Next.js app lives at <repo-root>/frontend.
+    # Without this, Amplify reads the root package.json and errors with
+    # "Cannot read 'next' version in package.json".
+    AMPLIFY_MONOREPO_APP_ROOT        = "frontend"
     NEXT_PUBLIC_API_BASE_URL         = module.api.api_url
     NEXT_PUBLIC_COGNITO_USER_POOL_ID = module.cognito.user_pool_id
     NEXT_PUBLIC_COGNITO_CLIENT_ID    = module.cognito.client_id
