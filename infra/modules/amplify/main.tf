@@ -35,6 +35,7 @@ version: 1
 applications:
   - appRoot: frontend
     frontend:
+      buildPath: '/'
       phases:
         preBuild:
           commands:
@@ -42,14 +43,15 @@ applications:
             - pnpm install --frozen-lockfile
         build:
           commands:
-            - pnpm build
+            - pnpm -F frontend build
       artifacts:
-        baseDirectory: .next
+        baseDirectory: frontend/.next
         files:
           - '**/*'
       cache:
         paths:
           - node_modules/**/*
+          - frontend/node_modules/**/*
 YAML
 
   # Amplify auto-creates a service role on first build (per AWS docs:
