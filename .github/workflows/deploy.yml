@@ -72,7 +72,7 @@ jobs:
           # Cognito callback target. Hardcoded to the Amplify default domain;
           # terraform can't derive this without a circular dep between
           # cognito.callback_urls and amplify.default_domain.
-          FRONTEND_DOMAIN: main.d3q7jjrtvv9b6l.amplifyapp.com
+          FRONTEND_DOMAIN: main.d30245m5kpo4p6.amplifyapp.com
         run: |
           terragrunt init -upgrade --terragrunt-non-interactive
           terragrunt apply -auto-approve --terragrunt-non-interactive
