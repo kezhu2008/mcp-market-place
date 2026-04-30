@@ -4,9 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-VALID_ARN = (
-    "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness"
-)
+VALID_ARN = "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness"
 
 
 def _client(aws):

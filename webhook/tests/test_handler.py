@@ -16,12 +16,8 @@ os.environ["TABLE_NAME"] = "wh_test"
 os.environ["SECRETS_PREFIX"] = "mcp-platform-test"
 
 
-VALID_ARN = (
-    "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness"
-)
-ALT_ARN = (
-    "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/start-harness"
-)
+VALID_ARN = "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness"
+ALT_ARN = "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/start-harness"
 
 
 def _bot_item(commands, default_function):
@@ -116,8 +112,7 @@ def test_slash_command_invokes_default_harness(aws):
     bedrock = MagicMock()
     bedrock.invoke_agent_runtime.return_value = _harness_response("pong")
 
-    with patch.object(h, "_send_message") as send, \
-         patch.object(h, "_bedrock", return_value=bedrock):
+    with patch.object(h, "_send_message") as send, patch.object(h, "_bedrock", return_value=bedrock):
         res = h.handler(
             _event("wh_path", {"message": {"text": "/ping", "chat": {"id": 42}}}),
             None,
@@ -150,8 +145,7 @@ def test_command_function_overrides_default(aws):
     bedrock = MagicMock()
     bedrock.invoke_agent_runtime.return_value = _harness_response("hello")
 
-    with patch.object(h, "_send_message"), \
-         patch.object(h, "_bedrock", return_value=bedrock):
+    with patch.object(h, "_send_message"), patch.object(h, "_bedrock", return_value=bedrock):
         h.handler(
             _event("wh_path", {"message": {"text": "/start", "chat": {"id": 1}}}),
             None,
@@ -167,8 +161,7 @@ def test_non_slash_uses_default_function(aws):
     bedrock = MagicMock()
     bedrock.invoke_agent_runtime.return_value = _harness_response("hi there")
 
-    with patch.object(h, "_send_message") as send, \
-         patch.object(h, "_bedrock", return_value=bedrock):
+    with patch.object(h, "_send_message") as send, patch.object(h, "_bedrock", return_value=bedrock):
         h.handler(
             _event("wh_path", {"message": {"text": "just saying hi", "chat": {"id": 7}}}),
             None,
@@ -184,8 +177,7 @@ def test_unknown_slash_falls_to_default(aws):
     bedrock = MagicMock()
     bedrock.invoke_agent_runtime.return_value = _harness_response("idk")
 
-    with patch.object(h, "_send_message") as send, \
-         patch.object(h, "_bedrock", return_value=bedrock):
+    with patch.object(h, "_send_message") as send, patch.object(h, "_bedrock", return_value=bedrock):
         h.handler(
             _event("wh_path", {"message": {"text": "/unknown arg", "chat": {"id": 1}}}),
             None,
@@ -206,8 +198,7 @@ def test_no_function_writes_event_and_skips_send(aws):
     )
 
     bedrock = MagicMock()
-    with patch.object(h, "_send_message") as send, \
-         patch.object(h, "_bedrock", return_value=bedrock):
+    with patch.object(h, "_send_message") as send, patch.object(h, "_bedrock", return_value=bedrock):
         res = h.handler(
             _event("wh_path", {"message": {"text": "/ping", "chat": {"id": 1}}}),
             None,
@@ -224,8 +215,7 @@ def test_harness_failure_returns_200_and_writes_event(aws):
     bedrock = MagicMock()
     bedrock.invoke_agent_runtime.side_effect = RuntimeError("boom")
 
-    with patch.object(h, "_send_message") as send, \
-         patch.object(h, "_bedrock", return_value=bedrock):
+    with patch.object(h, "_send_message") as send, patch.object(h, "_bedrock", return_value=bedrock):
         res = h.handler(
             _event("wh_path", {"message": {"text": "/ping", "chat": {"id": 1}}}),
             None,

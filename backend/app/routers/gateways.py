@@ -42,9 +42,7 @@ async def get_gateway(gateway_id: str, p: Principal = Depends(current_principal)
 
 
 @router.post("", response_model=Gateway, status_code=status.HTTP_201_CREATED)
-async def create_gateway(
-    body: GatewayCreate, p: Principal = Depends(current_principal)
-) -> Gateway:
+async def create_gateway(body: GatewayCreate, p: Principal = Depends(current_principal)) -> Gateway:
     gateway_id = f"gw_{ULID().hex[:10]}"
     secret_key = _gateway_secret_key(gateway_id)
 
