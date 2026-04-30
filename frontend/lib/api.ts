@@ -19,11 +19,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  const method = (init?.method ?? "GET").toUpperCase();
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...init, headers });
+  } catch (e) {
+    // Network / CORS / DNS — fetch threw before getting a response. The
+    // browser console will have the precise reason; the user-facing message
+    // names the request so it's easy to pin down.
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new ApiError(0, `Network error: ${method} ${path} — ${msg}`);
+  }
+
   if (!res.ok) {
     let body: unknown = undefined;
-    try { body = await res.json(); } catch { /* ignore */ }
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body);
+    let detail = "";
+    try {
+      body = await res.json();
+      const d = (body as { detail?: unknown })?.detail;
+      if (typeof d === "string") detail = d;
+      else if (d !== undefined) detail = JSON.stringify(d);
+    } catch { /* response had no JSON body */ }
+    const summary = detail
+      ? `${res.status} ${res.statusText}: ${detail}`
+      : `${res.status} ${res.statusText}`;
+    throw new ApiError(res.status, `${method} ${path} — ${summary}`, body);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
