@@ -37,6 +37,23 @@ resource "aws_apigatewayv2_api" "api" {
   }
 }
 
+# Transitional: keep the authorizer resource so terraform doesn't try to
+# delete it before the $default route's authorization fields have been
+# cleared in AWS. A follow-up commit will remove this once the route is
+# safely unauthenticated. (Previous attempt to do both in one apply hit
+# ConflictException: 'is referenced in route: $default'.)
+resource "aws_apigatewayv2_authorizer" "jwt" {
+  api_id           = aws_apigatewayv2_api.api.id
+  name             = "cognito-jwt"
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+
+  jwt_configuration {
+    audience = [var.cognito_client_id]
+    issuer   = "https://cognito-idp.${var.region}.amazonaws.com/${var.cognito_user_pool_id}"
+  }
+}
+
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id                 = aws_apigatewayv2_api.api.id
   integration_type       = "AWS_PROXY"
