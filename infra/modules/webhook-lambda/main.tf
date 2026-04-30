@@ -94,6 +94,17 @@ resource "aws_lambda_function_url" "url" {
   authorization_type = "NONE"
 }
 
+# Function URL with AuthType=NONE still requires an explicit resource-based
+# policy granting lambda:InvokeFunctionUrl to principal "*"; without it the URL
+# returns 403 Forbidden to unsigned callers (e.g. Telegram).
+resource "aws_lambda_permission" "url_invoke" {
+  statement_id           = "AllowPublicInvokeFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.fn.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
 output "function_name" {
   value = aws_lambda_function.fn.function_name
 }
