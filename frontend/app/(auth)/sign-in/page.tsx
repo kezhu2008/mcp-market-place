@@ -1,14 +1,52 @@
 "use client";
 
-import { useEffect } from "react";
-import { login } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Hub } from "aws-amplify/utils";
+import { configureAmplify, getIdToken, login } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { LogoMark } from "@/components/platform/icons";
 
 export default function SignInPage() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
   useEffect(() => {
-    // no-op — user triggers via button
-  }, []);
+    configureAmplify();
+
+    let alive = true;
+
+    const checkSession = async () => {
+      const token = await getIdToken();
+      if (!alive) return;
+      if (token) {
+        router.replace("/dashboard");
+      } else {
+        setChecking(false);
+      }
+    };
+
+    // Initial check (handles already-signed-in case + OAuth redirect-back).
+    checkSession();
+
+    // Re-check whenever Amplify finishes a sign-in flow (e.g. redirect-back
+    // exchange of ?code=... for tokens, which is async after configure).
+    const unsubscribe = Hub.listen("auth", ({ payload }) => {
+      if (
+        payload.event === "signedIn" ||
+        payload.event === "signInWithRedirect"
+      ) {
+        checkSession();
+      }
+    });
+
+    return () => {
+      alive = false;
+      unsubscribe();
+    };
+  }, [router]);
+
+  if (checking) return null;
 
   return (
     <main className="min-h-dvh flex items-center justify-center bg-bg">
