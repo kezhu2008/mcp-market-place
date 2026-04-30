@@ -10,8 +10,14 @@ from ulid import ULID
 from .. import logging as log
 from ..config import settings
 from ..deps import Principal, current_principal
-from ..models import Bot, BotCreate, BotUpdate
-from ..services import dynamo, secrets_manager, telegram
+from ..models import (
+    Bot,
+    BotCreate,
+    BotUpdate,
+    TestFunctionRequest,
+    TestFunctionResponse,
+)
+from ..services import bedrock, dynamo, secrets_manager, telegram
 
 router = APIRouter(prefix="/bots", tags=["bots"])
 
@@ -79,6 +85,7 @@ async def create_bot(body: BotCreate, p: Principal = Depends(current_principal))
         "secretId": body.secretId,
         "webhookPath": webhook_path,
         "commands": [c.model_dump() for c in body.commands],
+        "defaultFunction": body.defaultFunction.model_dump() if body.defaultFunction else None,
         "deployedAt": None,
         "lastEventAt": None,
         "lastError": None,
@@ -106,9 +113,12 @@ async def update_bot(bot_id: str, body: BotUpdate, p: Principal = Depends(curren
     item = dynamo.get_bot(p.tenant_id, bot_id)
     if not item:
         raise HTTPException(404, "bot not found")
-    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items()}
+    # exclude_unset preserves the missing-vs-explicit-null distinction needed
+    # to clear defaultFunction (client sends `{"defaultFunction": null}`).
+    updates = body.model_dump(exclude_unset=True)
     if "commands" in updates and updates["commands"] is not None:
-        updates["commands"] = [c if isinstance(c, dict) else c.model_dump() for c in updates["commands"]]
+        # model_dump already recursed into BotCommand/BotFunction.
+        updates["commands"] = list(updates["commands"])
     updated = dynamo.update_bot(p.tenant_id, bot_id, updates)
     _write_event(bot_id, "bot.updated", p.email, "config updated")
     return _to_model(updated)
@@ -176,3 +186,53 @@ async def delete_bot(bot_id: str, p: Principal = Depends(current_principal)) -> 
     _write_event(bot_id, "bot.deleted", p.email, "deleted")
     dynamo.delete_bot(p.tenant_id, bot_id)
     log.log(20, "bot.deleted", bot_id=bot_id, actor=p.email)
+
+
+@router.post("/{bot_id}/test-function", response_model=TestFunctionResponse)
+async def test_bot_function(
+    bot_id: str,
+    body: TestFunctionRequest,
+    p: Principal = Depends(current_principal),
+) -> TestFunctionResponse:
+    item = dynamo.get_bot(p.tenant_id, bot_id)
+    if not item:
+        raise HTTPException(404, "bot not found")
+
+    fn: dict | None = None
+    if body.useDefault or body.commandIndex is None:
+        fn = item.get("defaultFunction")
+    else:
+        commands = item.get("commands") or []
+        if body.commandIndex < 0 or body.commandIndex >= len(commands):
+            raise HTTPException(400, f"commandIndex out of range: {body.commandIndex}")
+        cmd = commands[body.commandIndex]
+        fn = cmd.get("function") or item.get("defaultFunction")
+
+    if not fn:
+        raise HTTPException(400, "no function configured (set the command's function or a defaultFunction)")
+
+    try:
+        out, latency, raw = bedrock.invoke_harness(
+            fn,
+            body.text,
+            session_key=f"test-{bot_id}-{p.user_id}",
+            region=settings.region,
+        )
+    except bedrock.HarnessError as e:
+        raise HTTPException(400, str(e)) from e
+    except Exception as e:
+        raise HTTPException(502, f"harness invocation failed: {e}") from e
+
+    target = (
+        "defaultFunction"
+        if body.useDefault or body.commandIndex is None
+        else f"commands[{body.commandIndex}]"
+    )
+    _write_event(
+        bot_id,
+        "function.tested",
+        p.email,
+        f"tested {target}",
+        {"latencyMs": latency, "agentRuntimeArn": fn.get("agentRuntimeArn")},
+    )
+    return TestFunctionResponse(output=out, latencyMs=latency, raw=raw)

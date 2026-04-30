@@ -1,7 +1,15 @@
 "use client";
 
 import { getIdToken } from "./auth";
-import type { Bot, BotCommand, DashboardSummary, Event, Secret } from "./types";
+import type {
+  Bot,
+  BotCommand,
+  DashboardSummary,
+  Event,
+  Secret,
+  TestFunctionRequest,
+  TestFunctionResponse,
+} from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
@@ -60,6 +68,11 @@ export const api = {
   deleteBot: (id: string) => request<void>(`/bots/${id}`, { method: "DELETE" }),
   deployBot: (id: string) => request<Bot>(`/bots/${id}/deploy`, { method: "POST" }),
   disableBot: (id: string) => request<Bot>(`/bots/${id}/disable`, { method: "POST" }),
+  testBotFunction: (id: string, body: TestFunctionRequest) =>
+    request<TestFunctionResponse>(`/bots/${id}/test-function`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // Secrets
   listSecrets: () => request<Secret[]>("/secrets"),

@@ -18,7 +18,7 @@ variable "runtime" {
 
 variable "timeout" {
   type    = number
-  default = 15
+  default = 60
 }
 
 variable "memory" {
@@ -73,6 +73,12 @@ data "aws_iam_policy_document" "perms" {
       "secretsmanager:UpdateSecret",
     ]
     resources = [var.secrets_prefix_arn]
+  }
+  # Needed by POST /bots/{id}/test-function. Mirrors the webhook lambda's
+  # permission. If the test endpoint is removed, drop this statement too.
+  statement {
+    actions   = ["bedrock-agentcore:InvokeAgentRuntime"]
+    resources = ["arn:aws:bedrock-agentcore:*:*:runtime/*"]
   }
 }
 

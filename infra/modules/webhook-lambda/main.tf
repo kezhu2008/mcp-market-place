@@ -18,7 +18,7 @@ variable "runtime" {
 
 variable "timeout" {
   type    = number
-  default = 10
+  default = 60
 }
 
 variable "memory" {
@@ -66,6 +66,13 @@ data "aws_iam_policy_document" "perms" {
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [var.secrets_prefix_arn]
+  }
+  # AgentCore harness invocation. Resource pattern uses wildcards because
+  # bot-configured ARNs may live in any region/account the operator has
+  # granted via the harness's resource policy.
+  statement {
+    actions   = ["bedrock-agentcore:InvokeAgentRuntime"]
+    resources = ["arn:aws:bedrock-agentcore:*:*:runtime/*"]
   }
 }
 

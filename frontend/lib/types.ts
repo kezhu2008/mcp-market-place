@@ -4,9 +4,24 @@ export type BotStatus = "draft" | "deploying" | "deployed" | "disabled" | "error
 export type BotType = "telegram";
 export type Visibility = "private" | "published";
 
+// AgentCore runtime ARN, e.g.
+//   arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness
+export const AGENTCORE_RUNTIME_ARN_RE =
+  /^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:runtime\/.+$/;
+
+export interface BedrockHarnessFunction {
+  type: "bedrock_harness";
+  agentRuntimeArn: string;
+  qualifier?: string | null;
+  promptTemplate?: string | null;
+}
+
+export type BotFunction = BedrockHarnessFunction;
+
 export interface BotCommand {
   cmd: string;
-  template: string;
+  // null/undefined → inherit Bot.defaultFunction at runtime.
+  function?: BotFunction | null;
 }
 
 export interface Bot {
@@ -22,6 +37,7 @@ export interface Bot {
   secretId: string;
   webhookPath: string;
   commands: BotCommand[];
+  defaultFunction?: BotFunction | null;
   deployedAt: string | null;
   lastEventAt: string | null;
   lastError: string | null;
@@ -29,6 +45,18 @@ export interface Bot {
   errors24h: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TestFunctionRequest {
+  text: string;
+  commandIndex?: number | null;
+  useDefault?: boolean;
+}
+
+export interface TestFunctionResponse {
+  output: string;
+  latencyMs: number;
+  raw: string;
 }
 
 export interface Secret {
@@ -56,6 +84,10 @@ export type EventType =
   | "webhook.received"
   | "webhook.bad_token"
   | "webhook.error"
+  | "webhook.no_function"
+  | "webhook.harness.invoked"
+  | "webhook.harness.error"
+  | "function.tested"
   | "secret.created"
   | "secret.rotated";
 
