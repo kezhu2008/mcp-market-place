@@ -46,6 +46,11 @@ locals {
     "https://${var.frontend_domain}/sign-in",
     "http://localhost:3000/sign-in",
   ] : ["http://localhost:3000/sign-in"]
+  # CORS expects origins (scheme://host), not full URLs with paths.
+  allowed_origins = var.frontend_domain != "" ? [
+    "https://${var.frontend_domain}",
+    "http://localhost:3000",
+  ] : ["http://localhost:3000"]
 }
 
 module "dynamodb" {
@@ -96,7 +101,7 @@ module "api" {
   cognito_user_pool_id = module.cognito.user_pool_id
   cognito_client_id    = module.cognito.client_id
   region               = var.region
-  allow_origins        = local.redirect_urls
+  allow_origins        = local.allowed_origins
 }
 
 module "amplify" {
