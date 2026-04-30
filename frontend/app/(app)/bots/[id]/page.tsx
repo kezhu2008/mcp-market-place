@@ -17,6 +17,7 @@ import {
   type BotCommand,
   type BotFunction,
   type Event,
+  type Gateway,
 } from "@/lib/types";
 import { relativeTime } from "@/lib/utils";
 
@@ -230,14 +231,25 @@ function FunctionEditor({
   onChange,
   emptyLabel,
   showInheritOption,
+  gateways,
 }: {
   value: BotFunction | null | undefined;
   onChange: (next: BotFunction | null) => void;
   emptyLabel: string;
   showInheritOption: boolean;
+  gateways: Gateway[];
 }) {
   const arnInvalid = !!value?.agentRuntimeArn && !AGENTCORE_RUNTIME_ARN_RE.test(value.agentRuntimeArn);
   const useDefault = !value;
+  const selectedIds = new Set(value?.gatewayIds ?? []);
+
+  function toggleGateway(id: string) {
+    if (!value) return;
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange({ ...value, gatewayIds: Array.from(next) });
+  }
 
   return (
     <div className="flex flex-col gap-[6px] mt-[6px]">
@@ -248,7 +260,7 @@ function FunctionEditor({
             checked={useDefault}
             onChange={(e) => {
               if (e.target.checked) onChange(null);
-              else onChange({ type: "bedrock_harness", agentRuntimeArn: "" });
+              else onChange({ type: "bedrock_harness", agentRuntimeArn: "", gatewayIds: [] });
             }}
           />
           inherit default function
@@ -303,6 +315,36 @@ function FunctionEditor({
               }
               placeholder="default: {text} (the user's message verbatim)"
             />
+          </div>
+          <div>
+            <Label>gateways (mcp tool sources)</Label>
+            {gateways.length === 0 ? (
+              <div className="font-mono text-mono-sm text-text-mute">
+                no gateways yet — <a href="/gateways" className="text-accent">create one</a> first
+              </div>
+            ) : (
+              <div className="flex flex-col gap-[4px]">
+                {gateways.map((g) => {
+                  const checked = selectedIds.has(g.id);
+                  const disabled = g.status !== "ready";
+                  return (
+                    <label
+                      key={g.id}
+                      className={`flex items-center gap-[6px] font-mono text-mono-sm ${disabled ? "text-text-mute" : "text-text-dim"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleGateway(g.id)}
+                      />
+                      🔌 {g.name}
+                      <span className="text-text-mute">· {g.status}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -378,8 +420,13 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
   const [defaultFunction, setDefaultFunction] = useState<BotFunction | null>(
     bot.defaultFunction ?? null,
   );
+  const [gateways, setGateways] = useState<Gateway[]>([]);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+
+  useEffect(() => {
+    api.listGateways().then(setGateways).catch(() => setGateways([]));
+  }, []);
 
   const dirty =
     name !== bot.name ||
@@ -435,6 +482,7 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
           onChange={setDefaultFunction}
           emptyLabel="(none — bot will not reply when no command matches)"
           showInheritOption={false}
+          gateways={gateways}
         />
         {!defaultFunction && (
           <button
@@ -498,6 +546,7 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
                   }}
                   emptyLabel="inherits default function"
                   showInheritOption={true}
+                  gateways={gateways}
                 />
                 <TestPanel
                   botId={bot.id}

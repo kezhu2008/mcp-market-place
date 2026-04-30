@@ -6,6 +6,8 @@ import type {
   BotCommand,
   DashboardSummary,
   Event,
+  Gateway,
+  GatewayCreate,
   Secret,
   TestFunctionRequest,
   TestFunctionResponse,
@@ -81,6 +83,13 @@ export const api = {
   rotateSecret: (id: string, value: string) =>
     request<Secret>(`/secrets/${id}/rotate`, { method: "POST", body: JSON.stringify({ value }) }),
   deleteSecret: (id: string) => request<void>(`/secrets/${id}`, { method: "DELETE" }),
+
+  // Gateways
+  listGateways: () => request<Gateway[]>("/gateways"),
+  getGateway: (id: string) => request<Gateway>(`/gateways/${id}`),
+  createGateway: (data: GatewayCreate) =>
+    request<Gateway>("/gateways", { method: "POST", body: JSON.stringify(data) }),
+  deleteGateway: (id: string) => request<void>(`/gateways/${id}`, { method: "DELETE" }),
 
   // Events
   listBotEvents: (botId: string, limit = 50) =>

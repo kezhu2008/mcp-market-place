@@ -26,6 +26,10 @@ class BedrockHarnessFunction(BaseModel):
     )
     qualifier: str | None = None
     promptTemplate: str | None = None
+    # IDs of Gateway items in our DDB. Their MCP URLs are passed to the
+    # AgentCore runtime in the invoke payload so the harness can connect
+    # to them as MCP servers.
+    gatewayIds: list[str] = []
 
 
 # Forward-compatible alias. When a second function type lands (http_webhook,
@@ -114,6 +118,38 @@ class Secret(BaseModel):
     lastRotatedAt: str
     lastUsedAt: str | None = None
     createdAt: str
+
+
+GatewayStatus = Literal["creating", "ready", "error"]
+
+
+class GatewayCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    description: str = ""
+    # Inline OpenAPI 3 spec (JSON or YAML). Capped to keep DDB items small;
+    # AgentCore accepts inline schemas up to its own limit (currently 1MB,
+    # but we cap lower for our DDB single-table item budget).
+    openapiSpec: str = Field(min_length=1, max_length=200_000)
+    # Bearer / API key passed to the upstream API by the gateway target.
+    # Stored in Secrets Manager; never persisted on the Gateway item.
+    token: str = Field(min_length=1, max_length=4096)
+
+
+class Gateway(BaseModel):
+    id: str
+    tenantId: str
+    ownerUserId: str
+    name: str
+    description: str = ""
+    status: GatewayStatus = "creating"
+    gatewayArn: str | None = None
+    gatewayUrl: str | None = None
+    targetId: str | None = None
+    credentialProviderArn: str | None = None
+    secretId: str  # internal Secret holding the API token
+    lastError: str | None = None
+    createdAt: str
+    updatedAt: str
 
 
 class Event(BaseModel):

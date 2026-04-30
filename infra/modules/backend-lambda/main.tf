@@ -80,6 +80,22 @@ data "aws_iam_policy_document" "perms" {
     actions   = ["bedrock-agentcore:InvokeAgentRuntime"]
     resources = ["arn:aws:bedrock-agentcore:*:*:runtime/*"]
   }
+  # Needed by /gateways CRUD: the backend provisions AgentCore gateways
+  # from an OpenAPI spec + token (CreateApiKeyCredentialProvider →
+  # CreateGateway → CreateGatewayTarget) and tears them down on delete.
+  statement {
+    actions = [
+      "bedrock-agentcore-control:CreateGateway",
+      "bedrock-agentcore-control:CreateGatewayTarget",
+      "bedrock-agentcore-control:CreateApiKeyCredentialProvider",
+      "bedrock-agentcore-control:DeleteGateway",
+      "bedrock-agentcore-control:DeleteGatewayTarget",
+      "bedrock-agentcore-control:DeleteApiKeyCredentialProvider",
+      "bedrock-agentcore-control:GetGateway",
+      "bedrock-agentcore-control:ListGateways",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "perms" {

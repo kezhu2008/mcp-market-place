@@ -39,6 +39,21 @@ def _webhook_secret_key(bot_id: str) -> str:
     return f"{bot_id}/webhook-secret"
 
 
+def _resolve_gateways(tenant_id: str, gateway_ids: list[str]) -> list[dict]:
+    """Look up Gateway items and return ``[{id, url}]`` for ready ones.
+
+    Missing or not-yet-ready gateways are silently dropped — the harness
+    invocation should still succeed without them rather than fail outright.
+    """
+    out: list[dict] = []
+    for gid in gateway_ids:
+        item = dynamo.get_gateway(tenant_id, gid)
+        if not item or item.get("status") != "ready" or not item.get("gatewayUrl"):
+            continue
+        out.append({"id": gid, "url": item["gatewayUrl"]})
+    return out
+
+
 def _write_event(bot_id: str, event_type: str, actor: str, msg: str, details: dict | None = None) -> None:
     dynamo.put_event(
         bot_id,
@@ -211,12 +226,14 @@ async def test_bot_function(
     if not fn:
         raise HTTPException(400, "no function configured (set the command's function or a defaultFunction)")
 
+    gateways = _resolve_gateways(p.tenant_id, fn.get("gatewayIds") or [])
     try:
         out, latency, raw = bedrock.invoke_harness(
             fn,
             body.text,
             session_key=f"test-{bot_id}-{p.user_id}",
             region=settings.region,
+            gateways=gateways,
         )
     except bedrock.HarnessError as e:
         raise HTTPException(400, str(e)) from e
