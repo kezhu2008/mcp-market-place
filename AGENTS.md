@@ -98,6 +98,10 @@ If any step fails, `services/agentcore_gateway.create` rolls back the partial AW
 - **`AllowOrigins`** must be **origins** (`scheme://host`), not full URLs. The `infra/envs/prod/main.tf` has both `local.redirect_urls` (with `/sign-in` for Cognito callbacks) and `local.allowed_origins` (no path for CORS) — don't conflate them.
 - **Don't put a JWT authorizer on the `$default` route.** It runs on `OPTIONS` preflight (which has no `Authorization` header), returns 401, browser treats preflight as failed → "Failed to fetch" on every cross-origin write. The lambda already validates Cognito JWT in `backend/app/deps.py:current_principal` — that's the only auth gate needed.
 
+### Lambda permissions (Function URL)
+
+- **`function_url_auth_type` is only valid on `lambda:InvokeFunctionUrl`**, never on `lambda:InvokeFunction`. AWS now returns `InvalidParameterValueException: FunctionUrlAuthType is only supported for lambda:InvokeFunctionUrl action`. The webhook module keeps both permissions (URL needs the base invoke action too) but `aws_lambda_permission.url_invoke_function` must omit the field.
+
 ### Terragrunt + state bucket
 
 - **`disable_bucket_update = true`** in `infra/envs/prod/terragrunt.hcl` — terragrunt otherwise prompts y/n to re-apply its default bucket policy (TLS enforcement, root-access block) and EOFs in CI.
