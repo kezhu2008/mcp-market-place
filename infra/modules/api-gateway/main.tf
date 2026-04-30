@@ -37,18 +37,6 @@ resource "aws_apigatewayv2_api" "api" {
   }
 }
 
-resource "aws_apigatewayv2_authorizer" "jwt" {
-  api_id           = aws_apigatewayv2_api.api.id
-  name             = "cognito-jwt"
-  authorizer_type  = "JWT"
-  identity_sources = ["$request.header.Authorization"]
-
-  jwt_configuration {
-    audience = [var.cognito_client_id]
-    issuer   = "https://cognito-idp.${var.region}.amazonaws.com/${var.cognito_user_pool_id}"
-  }
-}
-
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id                 = aws_apigatewayv2_api.api.id
   integration_type       = "AWS_PROXY"
@@ -62,12 +50,15 @@ resource "aws_apigatewayv2_route" "health" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
+# All routes pass through unauthenticated at the API Gateway layer; the lambda
+# enforces Cognito JWT validation itself (app/deps.py:current_principal).
+# A JWT authorizer here breaks CORS preflight: $default also matches OPTIONS,
+# the authorizer runs without an Authorization header, returns 401, browser
+# treats the preflight as failed.
 resource "aws_apigatewayv2_route" "any" {
-  api_id             = aws_apigatewayv2_api.api.id
-  route_key          = "$default"
-  target             = "integrations/${aws_apigatewayv2_integration.lambda.id}"
-  authorization_type = "JWT"
-  authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 
 resource "aws_apigatewayv2_stage" "default" {
