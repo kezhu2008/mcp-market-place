@@ -12,9 +12,7 @@ Visibility = Literal["private", "published"]
 
 # AgentCore runtime ARN, e.g.
 #   arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness
-AGENTCORE_RUNTIME_ARN_RE = (
-    r"^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:runtime/.+$"
-)
+AGENTCORE_RUNTIME_ARN_RE = r"^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:runtime/.+$"
 
 
 class BedrockHarnessFunction(BaseModel):

@@ -4,9 +4,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-VALID_ARN = (
-    "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness"
-)
+VALID_ARN = "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness"
 
 
 def _client(aws):
@@ -105,9 +103,7 @@ def test_delete_blocked_when_gateway_linked_by_bot(aws):
             headers=headers,
         ).json()
 
-    sec = c.post(
-        "/secrets", json={"name": "tg", "description": "", "value": "v"}, headers=headers
-    ).json()
+    sec = c.post("/secrets", json={"name": "tg", "description": "", "value": "v"}, headers=headers).json()
     bot = c.post(
         "/bots",
         json={
@@ -139,9 +135,7 @@ def test_test_function_passes_gateways_to_invoke(aws):
             headers=headers,
         ).json()
 
-    sec = c.post(
-        "/secrets", json={"name": "tg", "description": "", "value": "v"}, headers=headers
-    ).json()
+    sec = c.post("/secrets", json={"name": "tg", "description": "", "value": "v"}, headers=headers).json()
     bot = c.post(
         "/bots",
         json={

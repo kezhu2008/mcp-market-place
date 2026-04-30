@@ -61,9 +61,7 @@ def create(
         gateway_arn = gw.get("gatewayArn") or gw.get("arn")
         gateway_url = gw.get("gatewayUrl") or gw.get("url")
         if not gateway_arn or not gateway_url:
-            raise GatewayProvisionError(
-                f"create_gateway response missing arn/url: {gw!r}"
-            )
+            raise GatewayProvisionError(f"create_gateway response missing arn/url: {gw!r}")
 
         tgt = ctrl.create_gateway_target(
             gatewayIdentifier=gateway_arn,
