@@ -9,6 +9,7 @@ import {
   Server,
   Boxes,
   KeyRound,
+  Plug,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -25,6 +26,7 @@ interface Item {
 const ITEMS: Item[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/bots", label: "Bots", icon: Bot },
+  { href: "/gateways", label: "Gateways", icon: Plug },
   { href: "/tools", label: "Tools", icon: Wrench, soon: true },
   { href: "/mcp-servers", label: "MCP Servers", icon: Server, soon: true },
   { href: "/models", label: "Models", icon: Boxes, soon: true },

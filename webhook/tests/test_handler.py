@@ -270,3 +270,50 @@ def test_resolve_handles_bot_suffix(aws):
     assert matched is True
     assert name == "/ping"
     assert fn["agentRuntimeArn"] == ALT_ARN
+
+
+def test_gateway_urls_passed_in_payload(aws):
+    import handler as h
+
+    aws.put_item(
+        Item={
+            "PK": "TENANT#t_default",
+            "SK": "GATEWAY#gw_one",
+            "id": "gw_one",
+            "tenantId": "t_default",
+            "name": "stripe",
+            "status": "ready",
+            "gatewayUrl": "https://gw.example/mcp/one",
+        }
+    )
+    aws.put_item(
+        Item={
+            "PK": "TENANT#t_default",
+            "SK": "GATEWAY#gw_creating",
+            "id": "gw_creating",
+            "tenantId": "t_default",
+            "name": "wip",
+            "status": "creating",
+            "gatewayUrl": None,
+        }
+    )
+    aws.put_item(
+        Item=_bot_item(
+            commands=[{"cmd": "/ping", "function": None}],
+            default_function={
+                "type": "bedrock_harness",
+                "agentRuntimeArn": VALID_ARN,
+                "gatewayIds": ["gw_one", "gw_creating", "gw_missing"],
+            },
+        )
+    )
+
+    bedrock = MagicMock()
+    bedrock.invoke_agent_runtime.return_value = _harness_response("hi")
+
+    with patch.object(h, "_send_message"), patch.object(h, "_bedrock", return_value=bedrock):
+        h.handler(_event("wh_path", {"message": {"text": "/ping", "chat": {"id": 1}}}), None)
+
+    payload = json.loads(bedrock.invoke_agent_runtime.call_args.kwargs["payload"])
+    # Only the ready gateway is forwarded; creating + missing are dropped.
+    assert payload["gateways"] == [{"id": "gw_one", "url": "https://gw.example/mcp/one"}]

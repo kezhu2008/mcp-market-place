@@ -14,6 +14,34 @@ export interface BedrockHarnessFunction {
   agentRuntimeArn: string;
   qualifier?: string | null;
   promptTemplate?: string | null;
+  // IDs of Gateway resources to expose to the harness as MCP servers.
+  gatewayIds?: string[];
+}
+
+export type GatewayStatus = "creating" | "ready" | "error";
+
+export interface Gateway {
+  id: string;
+  tenantId: string;
+  ownerUserId: string;
+  name: string;
+  description: string;
+  status: GatewayStatus;
+  gatewayArn: string | null;
+  gatewayUrl: string | null;
+  targetId: string | null;
+  credentialProviderArn: string | null;
+  secretId: string;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GatewayCreate {
+  name: string;
+  description?: string;
+  openapiSpec: string;
+  token: string;
 }
 
 export type BotFunction = BedrockHarnessFunction;

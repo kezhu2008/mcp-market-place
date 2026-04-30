@@ -60,6 +60,25 @@ Notes for next agents:
 - `POST /bots/{id}/test-function` is the dev-loop primitive (validate ARN, see raw response). It writes a `function.tested` event. Do not point at production runtimes that have side effects. If you remove this endpoint, also drop the `bedrock-agentcore:InvokeAgentRuntime` statement from `infra/modules/backend-lambda/main.tf`.
 - The wizard at `app/(app)/bots/new/page.tsx` collects exactly one harness ARN (the bot's `defaultFunction`). Per-command overrides happen on the bot detail page Configuration tab, not in the wizard — keep it that way; ARN typing during onboarding hurts conversion.
 
+## Gateways (AgentCore Gateway)
+
+A `Gateway` is a tenant-scoped AgentCore Gateway provisioned by us from an OpenAPI spec + an upstream API token. Lives at `PK=TENANT#<tid>` / `SK=GATEWAY#<id>`. The backend calls **three** control-plane APIs in order during `POST /gateways`:
+
+1. `bedrock-agentcore-control:CreateApiKeyCredentialProvider` — stores the user-supplied token as a credential. Token is also stored in our Secrets Manager under `mcp-platform/<tid>/<gwId>/api-token` so it can be rotated symmetrically with bot tokens.
+2. `bedrock-agentcore-control:CreateGateway` — creates the MCP-protocol gateway. Inbound auth defaults to `AWS_IAM` so the harness's runtime role authenticates; switch to JWT out-of-band if needed.
+3. `bedrock-agentcore-control:CreateGatewayTarget` — wires the OpenAPI spec inline and binds the credential provider.
+
+If any step fails, `services/agentcore_gateway.create` rolls back the partial AWS state before re-raising. The Gateway item flips to `status: error` with `lastError` populated.
+
+**Linking to a harness** is per-function: `BedrockHarnessFunction.gatewayIds: list[str]` lists Gateway IDs whose URLs are forwarded to the AgentCore runtime in the invoke payload as `{"gateways": [{"id", "url"}]}`. The harness implementation must honor this contract — it's *our* convention, not AgentCore's. Webhook resolves gateway URLs via DDB `GetItem` per-id at invoke time and silently drops anything not `status=ready` (so a half-provisioned gateway doesn't break replies).
+
+**Gotchas:**
+
+- AgentCore control-plane field names (`apiKey`, `protocolType`, `authorizerType`, `targetConfiguration.mcp.openApiSchema.inlinePayload`, `credentialProviderConfigurations`) are best-effort against the firming-up API; if a real `apply` surfaces `ValidationException`, adjust kwargs in `services/agentcore_gateway.py` — nothing else in the codebase depends on the AWS shape.
+- Deleting a Gateway is blocked (409) when any bot's `defaultFunction` or `commands[*].function` references it. Unlink in the bot's Configuration tab first, then delete.
+- The webhook lambda **does NOT** need `bedrock-agentcore-control:*` perms — it only reads Gateway items from DDB (already covered by the existing `dynamodb:GetItem` grant). Only the backend lambda creates/destroys gateways.
+- OpenAPI specs are stored inline on the Gateway item (capped at 200 KB to fit DDB single-table item budgets). For very large specs, refactor to S3 + reference, not in scope yet.
+
 ## Gotchas / lessons
 
 ### Amplify Hosting (Next.js SSR)

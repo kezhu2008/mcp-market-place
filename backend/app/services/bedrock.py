@@ -29,10 +29,16 @@ def invoke_harness(
     text: str,
     session_key: str,
     region: str,
+    gateways: list[dict] | None = None,
 ) -> tuple[str, int, str]:
     """Invoke an AgentCore runtime synchronously.
 
     Returns (output, latencyMs, raw_body).
+
+    ``gateways`` is a list of ``{id, url}`` records appended to the payload
+    so the harness can connect to the listed AgentCore gateways as MCP
+    servers. The harness implementation is responsible for honoring this
+    contract.
     """
     if fn.get("type") != "bedrock_harness":
         raise HarnessError(f"unsupported function type: {fn.get('type')!r}")
@@ -44,10 +50,14 @@ def invoke_harness(
     except (KeyError, IndexError) as e:
         raise HarnessError(f"promptTemplate format error: {e}") from e
 
+    payload: dict = {"prompt": prompt}
+    if gateways:
+        payload["gateways"] = gateways
+
     kwargs: dict = {
         "agentRuntimeArn": fn["agentRuntimeArn"],
         "runtimeSessionId": _session_id(session_key),
-        "payload": json.dumps({"prompt": prompt}).encode(),
+        "payload": json.dumps(payload).encode(),
         "contentType": "application/json",
         "accept": "application/json",
     }
