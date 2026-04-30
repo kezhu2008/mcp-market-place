@@ -11,13 +11,18 @@ import { Modal } from "@/components/platform/Modal";
 import { EmptyState } from "@/components/platform/icons";
 import { useToast } from "@/components/platform/Toast";
 import { api } from "@/lib/api";
-import type { Bot, BotCommand, Event } from "@/lib/types";
+import {
+  AGENTCORE_RUNTIME_ARN_RE,
+  type Bot,
+  type BotCommand,
+  type BotFunction,
+  type Event,
+} from "@/lib/types";
 import { relativeTime } from "@/lib/utils";
 
 const TABS = [
   { id: "overview", label: "Overview" },
   { id: "configuration", label: "Configuration" },
-  { id: "handler", label: "Handler", stub: true },
   { id: "mcp", label: "MCP Bindings", stub: true },
   { id: "activity", label: "Activity" },
   { id: "settings", label: "Settings" },
@@ -116,7 +121,6 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
       <div className="p-s-8">
         {tab === "overview" && <OverviewTab bot={bot} />}
         {tab === "configuration" && <ConfigTab bot={bot} onSaved={reload} />}
-        {tab === "handler" && <StubTab name="Handler" />}
         {tab === "mcp" && <StubTab name="MCP Bindings" />}
         {tab === "activity" && <ActivityTable events={events} />}
         {tab === "settings" && <SettingsTab bot={bot} onDelete={() => setDeleteOpen(true)} />}
@@ -162,6 +166,13 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
   );
 }
 
+function fnSummary(fn: BotFunction | null | undefined, fallbackLabel: string): string {
+  if (!fn) return fallbackLabel;
+  const arn = fn.agentRuntimeArn;
+  const tail = arn.split("/").pop() ?? arn;
+  return `harness:${tail}${fn.qualifier ? `@${fn.qualifier}` : ""}`;
+}
+
 function OverviewTab({ bot }: { bot: Bot }) {
   return (
     <div className="grid grid-cols-2 gap-s-6">
@@ -171,6 +182,8 @@ function OverviewTab({ bot }: { bot: Bot }) {
           <dt className="text-text-mute">type</dt><dd>{bot.type}</dd>
           <dt className="text-text-mute">webhook</dt><dd className="code truncate">/{bot.webhookPath}</dd>
           <dt className="text-text-mute">secret</dt><dd className="truncate">{bot.secretId}</dd>
+          <dt className="text-text-mute">default fn</dt>
+          <dd className="truncate">{fnSummary(bot.defaultFunction, "(none)")}</dd>
           <dt className="text-text-mute">deployed at</dt><dd>{relativeTime(bot.deployedAt)}</dd>
           <dt className="text-text-mute">last event</dt><dd>{relativeTime(bot.lastEventAt)}</dd>
         </dl>
@@ -198,7 +211,9 @@ function OverviewTab({ bot }: { bot: Bot }) {
               <div key={i} className="flex items-center gap-[10px] font-mono text-mono">
                 <span className="code">{c.cmd}</span>
                 <span className="text-text-mute">→</span>
-                <span className="text-text-dim truncate">{c.template}</span>
+                <span className="text-text-dim truncate">
+                  {fnSummary(c.function, "(default)")}
+                </span>
               </div>
             ))}
           </div>
@@ -208,20 +223,186 @@ function OverviewTab({ bot }: { bot: Bot }) {
   );
 }
 
+type TestPanelState = { loading: boolean; output?: string; latencyMs?: number; error?: string };
+
+function FunctionEditor({
+  value,
+  onChange,
+  emptyLabel,
+  showInheritOption,
+}: {
+  value: BotFunction | null | undefined;
+  onChange: (next: BotFunction | null) => void;
+  emptyLabel: string;
+  showInheritOption: boolean;
+}) {
+  const arnInvalid = !!value?.agentRuntimeArn && !AGENTCORE_RUNTIME_ARN_RE.test(value.agentRuntimeArn);
+  const useDefault = !value;
+
+  return (
+    <div className="flex flex-col gap-[6px] mt-[6px]">
+      {showInheritOption && (
+        <label className="flex items-center gap-[6px] font-mono text-mono-sm text-text-mute">
+          <input
+            type="checkbox"
+            checked={useDefault}
+            onChange={(e) => {
+              if (e.target.checked) onChange(null);
+              else onChange({ type: "bedrock_harness", agentRuntimeArn: "" });
+            }}
+          />
+          inherit default function
+        </label>
+      )}
+      {!useDefault && (
+        <>
+          <div>
+            <Label>type</Label>
+            <select
+              value={value!.type}
+              onChange={() => { /* only one type today */ }}
+              className="h-[34px] w-full bg-surface border border-border rounded-sm px-[10px] text-body"
+            >
+              <option value="bedrock_harness">bedrock_harness</option>
+            </select>
+          </div>
+          <div>
+            <Label>agentRuntimeArn</Label>
+            <Input
+              mono
+              value={value!.agentRuntimeArn}
+              onChange={(e) =>
+                onChange({ ...value!, agentRuntimeArn: e.target.value })
+              }
+              placeholder="arn:aws:bedrock-agentcore:ap-southeast-2:000000000000:runtime/my-harness"
+            />
+            {arnInvalid && (
+              <div className="font-mono text-mono-sm text-red mt-[4px]">
+                does not match arn:aws:bedrock-agentcore:&lt;region&gt;:&lt;account&gt;:runtime/&lt;name&gt;
+              </div>
+            )}
+          </div>
+          <div>
+            <Label>qualifier (optional)</Label>
+            <Input
+              mono
+              value={value!.qualifier ?? ""}
+              onChange={(e) =>
+                onChange({ ...value!, qualifier: e.target.value || null })
+              }
+              placeholder="alias or version"
+            />
+          </div>
+          <div>
+            <Label>promptTemplate (optional)</Label>
+            <Textarea
+              rows={2}
+              value={value!.promptTemplate ?? ""}
+              onChange={(e) =>
+                onChange({ ...value!, promptTemplate: e.target.value || null })
+              }
+              placeholder="default: {text} (the user's message verbatim)"
+            />
+          </div>
+        </>
+      )}
+      {useDefault && (
+        <div className="font-mono text-mono-sm text-text-mute">{emptyLabel}</div>
+      )}
+    </div>
+  );
+}
+
+function TestPanel({
+  botId,
+  body,
+  disabled,
+}: {
+  botId: string;
+  body: () => { commandIndex?: number | null; useDefault?: boolean };
+  disabled: boolean;
+}) {
+  const [text, setText] = useState("hello");
+  const [state, setState] = useState<TestPanelState>({ loading: false });
+  const toast = useToast();
+
+  async function run() {
+    setState({ loading: true });
+    try {
+      const res = await api.testBotFunction(botId, { text, ...body() });
+      setState({ loading: false, output: res.output, latencyMs: res.latencyMs });
+    } catch (e) {
+      const msg = (e as Error).message;
+      setState({ loading: false, error: msg });
+      toast.push({ kind: "error", title: "Test failed", body: msg });
+    }
+  }
+
+  return (
+    <div className="mt-[10px] flex flex-col gap-[6px]">
+      <div className="flex gap-[8px]">
+        <Input
+          className="flex-1"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="sample input"
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={run}
+          disabled={disabled || state.loading || !text.trim()}
+        >
+          {state.loading ? "Testing…" : "Test"}
+        </Button>
+      </div>
+      {state.output !== undefined && (
+        <div className="bg-surface-2 border border-border rounded-sm p-[8px] font-mono text-mono-sm">
+          <div className="text-text-mute mb-[4px]">
+            output · {state.latencyMs}ms
+          </div>
+          <pre className="whitespace-pre-wrap text-text-dim">{state.output}</pre>
+        </div>
+      )}
+      {state.error && (
+        <div className="font-mono text-mono-sm text-red">{state.error}</div>
+      )}
+    </div>
+  );
+}
+
 function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
   const [name, setName] = useState(bot.name);
   const [description, setDescription] = useState(bot.description);
   const [commands, setCommands] = useState<BotCommand[]>(bot.commands);
+  const [defaultFunction, setDefaultFunction] = useState<BotFunction | null>(
+    bot.defaultFunction ?? null,
+  );
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
-  const dirty = name !== bot.name || description !== bot.description ||
-    JSON.stringify(commands) !== JSON.stringify(bot.commands);
+  const dirty =
+    name !== bot.name ||
+    description !== bot.description ||
+    JSON.stringify(commands) !== JSON.stringify(bot.commands) ||
+    JSON.stringify(defaultFunction ?? null) !== JSON.stringify(bot.defaultFunction ?? null);
+
+  const arnsValid =
+    (!defaultFunction || AGENTCORE_RUNTIME_ARN_RE.test(defaultFunction.agentRuntimeArn)) &&
+    commands.every(
+      (c) => !c.function || AGENTCORE_RUNTIME_ARN_RE.test(c.function.agentRuntimeArn),
+    );
 
   async function save() {
     setSaving(true);
     try {
-      await api.updateBot(bot.id, { name, description, commands });
+      await api.updateBot(bot.id, {
+        name,
+        description,
+        commands,
+        // PATCH semantics: explicit null clears defaultFunction.
+        defaultFunction,
+      });
       toast.push({ kind: "success", title: "Saved" });
       onSaved();
     } catch (e) {
@@ -230,7 +411,7 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
   }
 
   return (
-    <div className="flex flex-col gap-s-6 max-w-[720px]">
+    <div className="flex flex-col gap-s-6 max-w-[820px]">
       <div className="card p-s-5 flex flex-col gap-s-5">
         <div>
           <Label>name</Label>
@@ -241,30 +422,111 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
           <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
       </div>
+
+      <div className="card p-s-5">
+        <div className="flex items-center justify-between mb-[6px]">
+          <Label className="mb-0">default handler (non-slash messages, fallback)</Label>
+        </div>
+        <div className="font-mono text-mono-sm text-text-mute mb-[6px]">
+          invoked for any message without a matching slash command, and for slash commands that don&rsquo;t override their own function.
+        </div>
+        <FunctionEditor
+          value={defaultFunction}
+          onChange={setDefaultFunction}
+          emptyLabel="(none — bot will not reply when no command matches)"
+          showInheritOption={false}
+        />
+        {!defaultFunction && (
+          <button
+            type="button"
+            className="font-mono text-mono-sm text-accent mt-[6px]"
+            onClick={() => setDefaultFunction({ type: "bedrock_harness", agentRuntimeArn: "" })}
+          >
+            + configure default function
+          </button>
+        )}
+        <TestPanel
+          botId={bot.id}
+          body={() => ({ useDefault: true })}
+          disabled={!defaultFunction || !AGENTCORE_RUNTIME_ARN_RE.test(defaultFunction.agentRuntimeArn) || dirty}
+        />
+        {dirty && (
+          <div className="font-mono text-mono-sm text-text-mute mt-[6px]">
+            save first to test pending changes
+          </div>
+        )}
+      </div>
+
       <div className="card p-s-5">
         <Label>commands</Label>
-        <div className="flex flex-col gap-[6px]">
+        <div className="flex flex-col gap-s-5">
           {commands.map((c, i) => (
-            <div key={i} className="flex gap-[8px]">
-              <Input mono className="w-[140px]" value={c.cmd} onChange={(e) => {
-                const next = [...commands]; next[i] = { ...next[i], cmd: e.target.value }; setCommands(next);
-              }} />
-              <Input className="flex-1" value={c.template} onChange={(e) => {
-                const next = [...commands]; next[i] = { ...next[i], template: e.target.value }; setCommands(next);
-              }} />
-              <Button variant="ghost" size="sm" onClick={() => setCommands(commands.filter((_, j) => j !== i))}>remove</Button>
+            <div key={i} className="border border-border rounded-sm p-[10px]">
+              <div className="flex gap-[8px] items-center">
+                <Input
+                  mono
+                  className="w-[160px]"
+                  value={c.cmd}
+                  onChange={(e) => {
+                    const next = [...commands];
+                    next[i] = { ...next[i], cmd: e.target.value };
+                    setCommands(next);
+                  }}
+                />
+                <span className="font-mono text-mono-sm text-text-mute">
+                  → {fnSummary(c.function, "default")}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto"
+                  onClick={() => setCommands(commands.filter((_, j) => j !== i))}
+                >
+                  remove
+                </Button>
+              </div>
+              <details className="mt-[8px]">
+                <summary className="cursor-pointer font-mono text-mono-sm text-accent">
+                  function override
+                </summary>
+                <FunctionEditor
+                  value={c.function ?? null}
+                  onChange={(next) => {
+                    const arr = [...commands];
+                    arr[i] = { ...arr[i], function: next };
+                    setCommands(arr);
+                  }}
+                  emptyLabel="inherits default function"
+                  showInheritOption={true}
+                />
+                <TestPanel
+                  botId={bot.id}
+                  body={() => ({ commandIndex: i })}
+                  disabled={dirty}
+                />
+              </details>
             </div>
           ))}
-          <Button variant="secondary" size="sm" onClick={() => setCommands([...commands, { cmd: "/", template: "" }])}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setCommands([...commands, { cmd: "/", function: null }])}
+          >
             + add command
           </Button>
         </div>
       </div>
+
       <div className="flex items-center gap-[10px]">
         <span className="font-mono text-mono-sm text-text-mute">
           {dirty ? "unsaved changes" : "in sync"}
         </span>
-        <Button variant="accent" disabled={!dirty || saving} onClick={save} className="ml-auto">
+        <Button
+          variant="accent"
+          disabled={!dirty || saving || !arnsValid}
+          onClick={save}
+          className="ml-auto"
+        >
           {saving ? "Saving…" : "Save changes"}
         </Button>
       </div>

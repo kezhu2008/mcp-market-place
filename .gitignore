@@ -14,9 +14,11 @@ frontend/build/
 backend/build/
 backend/dist/
 backend/*.zip
+backend/*.egg-info/
 webhook/build/
 webhook/dist/
 webhook/*.zip
+webhook/*.egg-info/
 
 # Terraform
 **/.terraform/

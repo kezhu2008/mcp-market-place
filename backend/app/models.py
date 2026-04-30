@@ -10,10 +10,34 @@ BotStatus = Literal["draft", "deploying", "deployed", "disabled", "error"]
 BotType = Literal["telegram"]
 Visibility = Literal["private", "published"]
 
+# AgentCore runtime ARN, e.g.
+#   arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness
+AGENTCORE_RUNTIME_ARN_RE = (
+    r"^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:runtime/.+$"
+)
+
+
+class BedrockHarnessFunction(BaseModel):
+    type: Literal["bedrock_harness"] = "bedrock_harness"
+    agentRuntimeArn: str = Field(
+        min_length=20,
+        max_length=2048,
+        pattern=AGENTCORE_RUNTIME_ARN_RE,
+    )
+    qualifier: str | None = None
+    promptTemplate: str | None = None
+
+
+# Forward-compatible alias. When a second function type lands (http_webhook,
+# raw bedrock InvokeModel, MCP bridge…), promote this to
+# Annotated[BedrockHarnessFunction | OtherFunction, Field(discriminator="type")].
+BotFunction = BedrockHarnessFunction
+
 
 class BotCommand(BaseModel):
     cmd: str
-    template: str
+    # None → inherit Bot.defaultFunction at runtime (resolved webhook-side).
+    function: BotFunction | None = None
 
 
 class BotCreate(BaseModel):
@@ -22,12 +46,15 @@ class BotCreate(BaseModel):
     type: BotType = "telegram"
     secretId: str
     commands: list[BotCommand] = []
+    defaultFunction: BotFunction | None = None
 
 
 class BotUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=64)
     description: str | None = None
     commands: list[BotCommand] | None = None
+    # PATCH semantics: missing → no change; explicit null → clear.
+    defaultFunction: BotFunction | None = None
 
 
 class Bot(BaseModel):
@@ -43,6 +70,7 @@ class Bot(BaseModel):
     secretId: str
     webhookPath: str
     commands: list[BotCommand] = []
+    defaultFunction: BotFunction | None = None
     deployedAt: str | None = None
     lastEventAt: str | None = None
     lastError: str | None = None
@@ -50,6 +78,18 @@ class Bot(BaseModel):
     errors24h: int = 0
     createdAt: str
     updatedAt: str
+
+
+class TestFunctionRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4096)
+    commandIndex: int | None = None
+    useDefault: bool = False
+
+
+class TestFunctionResponse(BaseModel):
+    output: str
+    latencyMs: int
+    raw: str
 
 
 class SecretCreate(BaseModel):

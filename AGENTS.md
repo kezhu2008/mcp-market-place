@@ -38,6 +38,28 @@ Push to `main` → `.github/workflows/deploy.yml` → `terragrunt apply` (state 
 
 `infra/bootstrap/` creates the terraform state bucket + lock table. Run once per AWS account from a workstation with admin AWS creds (NOT from CI — the deploy IAM user that CI uses is created **after** bootstrap and has narrower perms). See `infra/bootstrap/README.md`.
 
+## Bot routing & functions
+
+Each bot routes incoming Telegram messages to a `BotFunction` (today the only variant is `bedrock_harness`, holding an AgentCore `agentRuntimeArn`, optional `qualifier`, and optional `promptTemplate`). There are no static `template` replies — every reply is a harness invocation.
+
+Routing precedence (mirrors `_resolve_function` in `webhook/handler.py`):
+
+1. text starts with `/` and matches `commands[*].cmd` and that command has `function` set → invoke `command.function`
+2. text starts with `/` and matches a command with `function == null` → invoke `bot.defaultFunction`
+3. text starts with `/` but no command matches → invoke `bot.defaultFunction`
+4. text doesn't start with `/` → invoke `bot.defaultFunction`
+5. resolved function is `null` → no reply, write a `webhook.no_function` event, return 200
+
+Notes for next agents:
+
+- `BotCommand.function = null` means *inherit* `Bot.defaultFunction` at runtime; the inheritance is webhook-side, not stored. PATCHing a bot with `{"defaultFunction": null}` clears it; omitting the key leaves it unchanged (relies on `model_dump(exclude_unset=True)` in `routers/bots.py`).
+- **Existing `template`-only bots will silently stop replying** after this change — there's no migration script. Single-tenant Phase 1, low data; just edit them in the UI to add a default harness.
+- AgentCore IAM: both webhook and backend lambda roles have `bedrock-agentcore:InvokeAgentRuntime` on `arn:aws:bedrock-agentcore:*:*:runtime/*` (wildcards because operator may grant cross-account access via the harness's resource policy). Lambda timeouts are 60s on both. If you see Telegram retries, check CloudWatch for harness latency before assuming a bug.
+- Webhook still **never returns 5xx** — harness failures write a `webhook.harness.error` event and return 200. Do not change this; Telegram retries aggressively on 5xx and amplifies cost/latency.
+- `runtimeSessionId` is derived deterministically as `tg-{botId}-{chatId}` plus a SHA-256 pad (AgentCore minimum length is 33). No DDB session store — conversational memory is the harness's responsibility.
+- `POST /bots/{id}/test-function` is the dev-loop primitive (validate ARN, see raw response). It writes a `function.tested` event. Do not point at production runtimes that have side effects. If you remove this endpoint, also drop the `bedrock-agentcore:InvokeAgentRuntime` statement from `infra/modules/backend-lambda/main.tf`.
+- The wizard at `app/(app)/bots/new/page.tsx` collects exactly one harness ARN (the bot's `defaultFunction`). Per-command overrides happen on the bot detail page Configuration tab, not in the wizard — keep it that way; ARN typing during onboarding hurts conversion.
+
 ## Gotchas / lessons
 
 ### Amplify Hosting (Next.js SSR)

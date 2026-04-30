@@ -6,7 +6,11 @@ import { PageHeader } from "@/components/platform/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { api } from "@/lib/api";
-import type { BotCommand, Secret } from "@/lib/types";
+import {
+  AGENTCORE_RUNTIME_ARN_RE,
+  type BotCommand,
+  type Secret,
+} from "@/lib/types";
 import { useToast } from "@/components/platform/Toast";
 
 export default function NewBotPage() {
@@ -16,7 +20,10 @@ export default function NewBotPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [secretId, setSecretId] = useState("");
-  const [commands, setCommands] = useState<BotCommand[]>([{ cmd: "/ping", template: "pong" }]);
+  // Wizard-time commands have no per-command function override; all commands
+  // (and non-slash messages) inherit the default harness configured below.
+  const [commands, setCommands] = useState<BotCommand[]>([{ cmd: "/ping" }]);
+  const [defaultArn, setDefaultArn] = useState("");
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -25,13 +32,24 @@ export default function NewBotPage() {
   }, []);
 
   const canNext1 = name.trim().length > 0 && name.length <= 64;
-  const canSave = canNext1 && !!secretId && commands.every((c) => c.cmd.startsWith("/") && c.template.trim());
+  const arnValid = AGENTCORE_RUNTIME_ARN_RE.test(defaultArn);
+  const canSave =
+    canNext1 &&
+    !!secretId &&
+    commands.every((c) => c.cmd.startsWith("/") && c.cmd.length > 1) &&
+    arnValid;
 
   async function save(deploy: boolean) {
     if (!canSave) return;
     setSaving(true);
     try {
-      const bot = await api.createBot({ name, description, secretId, commands });
+      const bot = await api.createBot({
+        name,
+        description,
+        secretId,
+        commands,
+        defaultFunction: { type: "bedrock_harness", agentRuntimeArn: defaultArn },
+      });
       if (deploy) await api.deployBot(bot.id);
       toast.push({ kind: "success", title: deploy ? "Deployed" : "Saved as draft", body: bot.name });
       router.push(`/bots/${bot.id}`);
@@ -100,27 +118,40 @@ export default function NewBotPage() {
                   </select>
                 )}
               </div>
+
+              <div>
+                <Label>default harness (Bedrock AgentCore runtime ARN)</Label>
+                <Input
+                  mono
+                  value={defaultArn}
+                  onChange={(e) => setDefaultArn(e.target.value)}
+                  placeholder="arn:aws:bedrock-agentcore:ap-southeast-2:000000000000:runtime/my-harness"
+                />
+                <div className="font-mono text-mono-sm text-text-mute mt-[4px]">
+                  every command and non-slash message routes to this harness by default. add per-command overrides after creation.
+                </div>
+                {defaultArn && !arnValid && (
+                  <div className="font-mono text-mono-sm text-red mt-[4px]">
+                    does not match arn:aws:bedrock-agentcore:&lt;region&gt;:&lt;account&gt;:runtime/&lt;name&gt;
+                  </div>
+                )}
+              </div>
+
               <div>
                 <Label>commands</Label>
+                <div className="font-mono text-mono-sm text-text-mute mb-[6px]">
+                  optional — list slash commands you want the bot to recognize. all route to the default harness; add per-command harness overrides after creation.
+                </div>
                 <div className="flex flex-col gap-[6px]">
                   {commands.map((c, i) => (
                     <div key={i} className="flex gap-[8px] items-center">
                       <Input
                         mono
-                        className="w-[140px]"
+                        className="w-[200px]"
                         value={c.cmd}
                         onChange={(e) => {
                           const next = [...commands];
                           next[i] = { ...next[i], cmd: e.target.value };
-                          setCommands(next);
-                        }}
-                      />
-                      <Input
-                        className="flex-1"
-                        value={c.template}
-                        onChange={(e) => {
-                          const next = [...commands];
-                          next[i] = { ...next[i], template: e.target.value };
                           setCommands(next);
                         }}
                       />
@@ -133,7 +164,7 @@ export default function NewBotPage() {
                       </Button>
                     </div>
                   ))}
-                  <Button variant="secondary" size="sm" onClick={() => setCommands([...commands, { cmd: "/", template: "" }])}>
+                  <Button variant="secondary" size="sm" onClick={() => setCommands([...commands, { cmd: "/" }])}>
                     + add command
                   </Button>
                 </div>
@@ -158,7 +189,7 @@ export default function NewBotPage() {
             <ul className="font-mono text-mono-sm text-text-dim flex flex-col gap-[4px]">
               <li>· register Telegram webhook</li>
               <li>· flip status to deployed</li>
-              <li>· start receiving events</li>
+              <li>· route every message to the default harness</li>
             </ul>
           </div>
         </aside>
