@@ -114,11 +114,15 @@ resource "aws_lambda_permission" "url_invoke" {
 }
 
 resource "aws_lambda_permission" "url_invoke_function" {
-  statement_id           = "AllowPublicInvokeFunction"
-  action                 = "lambda:InvokeFunction"
-  function_name          = aws_lambda_function.fn.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
+  statement_id  = "AllowPublicInvokeFunction"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.fn.function_name
+  principal     = "*"
+  # NOTE: do NOT set function_url_auth_type here — AWS rejects it with
+  #   InvalidParameterValueException: FunctionUrlAuthType is only supported
+  #   for lambda:InvokeFunctionUrl action
+  # The InvokeFunctionUrl permission above already carries that constraint;
+  # this statement only grants the base invoke action the URL also requires.
 }
 
 output "function_name" {
