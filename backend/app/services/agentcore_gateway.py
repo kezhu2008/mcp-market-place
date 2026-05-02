@@ -9,6 +9,11 @@ spec + an upstream API token:
     3. CreateGatewayTarget — wires the OpenAPI spec into the gateway and binds
        the credential provider to it.
 
+Also exposes ``list_tools(gateway_url, region)`` which probes a deployed
+gateway via a SigV4-signed JSON-RPC ``tools/list`` request — used by the
+``POST /gateways/{id}/test`` endpoint so operators can validate a gateway
+from the UI.
+
 The exact field names for the AgentCore control plane are still firming up;
 the tests stub this service out. If a real apply against AWS surfaces a
 schema mismatch, adjust the kwargs here — none of the rest of the codebase
@@ -17,10 +22,20 @@ sees the AWS shape.
 
 from __future__ import annotations
 
+import json
+import time
+
 import boto3
+import httpx
+from botocore.auth import SigV4Auth
+from botocore.awsrequest import AWSRequest
 
 
 class GatewayProvisionError(Exception):
+    pass
+
+
+class GatewayInvocationError(Exception):
     pass
 
 
@@ -103,6 +118,58 @@ def create(
             except Exception:  # noqa: S110
                 pass
         raise
+
+
+def list_tools(gateway_url: str, region: str, timeout: float = 10.0) -> tuple[list[dict], int]:
+    """Probe a deployed gateway with a SigV4-signed ``tools/list`` JSON-RPC.
+
+    Returns ``([{name, description}, ...], latency_ms)``. Used by the test
+    endpoint to confirm reachability, auth, and OpenAPI-to-MCP translation
+    in one round-trip.
+
+    Field shape on the response is best-effort against the AgentCore data
+    plane; if real traffic surfaces a different envelope, update here.
+    """
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode()
+    creds = boto3.Session().get_credentials()
+    if creds is None:
+        raise GatewayInvocationError("no AWS credentials available for SigV4")
+    request = AWSRequest(
+        method="POST",
+        url=gateway_url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    SigV4Auth(creds, "bedrock-agentcore", region).add_auth(request)
+    headers = dict(request.headers.items())
+
+    t0 = time.time()
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(gateway_url, content=body, headers=headers)
+    except httpx.HTTPError as e:
+        raise GatewayInvocationError(f"gateway unreachable: {e}") from e
+    latency_ms = int((time.time() - t0) * 1000)
+
+    if resp.status_code >= 400:
+        raise GatewayInvocationError(f"gateway returned {resp.status_code}: {resp.text[:500]}")
+
+    try:
+        parsed = resp.json()
+    except json.JSONDecodeError as e:
+        raise GatewayInvocationError(f"non-JSON response: {resp.text[:500]}") from e
+
+    # JSON-RPC envelope: {jsonrpc, id, result: {tools: [...]}}.
+    result = parsed.get("result") if isinstance(parsed, dict) else None
+    raw_tools = (result or {}).get("tools") if isinstance(result, dict) else None
+    if not isinstance(raw_tools, list):
+        raise GatewayInvocationError(f"unexpected response shape: {json.dumps(parsed)[:500]}")
+    tools = [
+        {"name": str(t.get("name", "")), "description": str(t.get("description", ""))}
+        for t in raw_tools
+        if isinstance(t, dict)
+    ]
+    return tools, latency_ms
 
 
 def destroy(

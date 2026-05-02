@@ -7,7 +7,7 @@ import { Input, Label, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/platform/Modal";
 import { EmptyState } from "@/components/platform/icons";
 import { api } from "@/lib/api";
-import type { Gateway } from "@/lib/types";
+import type { Gateway, GatewayTool } from "@/lib/types";
 import { relativeTime } from "@/lib/utils";
 import { useToast } from "@/components/platform/Toast";
 
@@ -15,6 +15,7 @@ export default function GatewaysPage() {
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [testFor, setTestFor] = useState<Gateway | null>(null);
   const [deleteFor, setDeleteFor] = useState<Gateway | null>(null);
 
   async function load() {
@@ -66,7 +67,15 @@ export default function GatewaysPage() {
                   {g.gatewayUrl ?? "—"}
                 </div>
                 <div className="font-mono text-mono-sm text-text-dim">{relativeTime(g.createdAt)}</div>
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-[6px]">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={g.status !== "ready"}
+                    onClick={() => setTestFor(g)}
+                  >
+                    Test
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => setDeleteFor(g)}>Delete</Button>
                 </div>
               </div>
@@ -75,8 +84,69 @@ export default function GatewaysPage() {
         )}
       </div>
       {createOpen && <CreateModal onClose={() => { setCreateOpen(false); load(); }} />}
+      {testFor && <TestModal gateway={testFor} onClose={() => setTestFor(null)} />}
       {deleteFor && <DeleteModal gateway={deleteFor} onClose={() => { setDeleteFor(null); load(); }} />}
     </>
+  );
+}
+
+function TestModal({ gateway, onClose }: { gateway: Gateway; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [tools, setTools] = useState<GatewayTool[] | null>(null);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const toast = useToast();
+
+  async function run() {
+    setBusy(true);
+    setTools(null);
+    try {
+      const res = await api.testGateway(gateway.id);
+      setTools(res.tools);
+      setLatencyMs(res.latencyMs);
+    } catch (e) {
+      toast.push({ kind: "error", title: "Test failed", body: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Test "${gateway.name}"`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+          <Button variant="accent" disabled={busy} onClick={run}>
+            {busy ? "Probing…" : "List tools"}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-body text-text-dim mb-s-5">
+        Sends a SigV4-signed <code className="code">tools/list</code> JSON-RPC to the gateway URL. Confirms reachability, IAM auth, and that the OpenAPI spec translated into MCP tools.
+      </p>
+      {tools !== null && (
+        <div className="bg-surface-2 border border-border rounded-sm p-[10px] font-mono text-mono-sm">
+          <div className="text-text-mute mb-[6px]">
+            {tools.length} tool(s) · {latencyMs}ms
+          </div>
+          {tools.length === 0 ? (
+            <div className="text-text-mute">no tools returned</div>
+          ) : (
+            <div className="flex flex-col gap-[4px]">
+              {tools.map((t) => (
+                <div key={t.name} className="text-text-dim">
+                  <span className="text-text">{t.name}</span>
+                  {t.description && <span className="text-text-mute"> — {t.description}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 

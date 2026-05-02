@@ -39,19 +39,15 @@ def _webhook_secret_key(bot_id: str) -> str:
     return f"{bot_id}/webhook-secret"
 
 
-def _resolve_gateways(tenant_id: str, gateway_ids: list[str]) -> list[dict]:
-    """Look up Gateway items and return ``[{id, url}]`` for ready ones.
-
-    Missing or not-yet-ready gateways are silently dropped — the harness
-    invocation should still succeed without them rather than fail outright.
-    """
-    out: list[dict] = []
-    for gid in gateway_ids:
-        item = dynamo.get_gateway(tenant_id, gid)
-        if not item or item.get("status") != "ready" or not item.get("gatewayUrl"):
-            continue
-        out.append({"id": gid, "url": item["gatewayUrl"]})
-    return out
+def _validate_function_refs(tenant_id: str, fn: dict | None) -> None:
+    """Confirm a function's referenced harness exists for this tenant."""
+    if not fn:
+        return
+    hns_id = fn.get("harnessId")
+    if not hns_id:
+        raise HTTPException(422, "function missing harnessId")
+    if not dynamo.get_harness(tenant_id, hns_id):
+        raise HTTPException(404, f"harness not found: {hns_id}")
 
 
 def _write_event(bot_id: str, event_type: str, actor: str, msg: str, details: dict | None = None) -> None:
@@ -80,6 +76,13 @@ async def create_bot(body: BotCreate, p: Principal = Depends(current_principal))
     sec = dynamo.get_secret_meta(p.tenant_id, body.secretId)
     if not sec:
         raise HTTPException(404, f"secret not found: {body.secretId}")
+    # Validate every function points at a real harness for this tenant.
+    _validate_function_refs(
+        p.tenant_id,
+        body.defaultFunction.model_dump() if body.defaultFunction else None,
+    )
+    for c in body.commands:
+        _validate_function_refs(p.tenant_id, c.function.model_dump() if c.function else None)
 
     bot_id = f"bot_{ULID().hex[:10]}"
     webhook_path = f"wh_{ULID().hex[:14]}"
@@ -131,8 +134,11 @@ async def update_bot(bot_id: str, body: BotUpdate, p: Principal = Depends(curren
     # exclude_unset preserves the missing-vs-explicit-null distinction needed
     # to clear defaultFunction (client sends `{"defaultFunction": null}`).
     updates = body.model_dump(exclude_unset=True)
+    if "defaultFunction" in updates:
+        _validate_function_refs(p.tenant_id, updates["defaultFunction"])
     if "commands" in updates and updates["commands"] is not None:
-        # model_dump already recursed into BotCommand/BotFunction.
+        for c in updates["commands"]:
+            _validate_function_refs(p.tenant_id, c.get("function"))
         updates["commands"] = list(updates["commands"])
     updated = dynamo.update_bot(p.tenant_id, bot_id, updates)
     _write_event(bot_id, "bot.updated", p.email, "config updated")
@@ -226,10 +232,18 @@ async def test_bot_function(
     if not fn:
         raise HTTPException(400, "no function configured (set the command's function or a defaultFunction)")
 
-    gateways = _resolve_gateways(p.tenant_id, fn.get("gatewayIds") or [])
+    harness_id = fn.get("harnessId")
+    if not harness_id:
+        raise HTTPException(400, "function missing harnessId")
+    resolved_fn, gateways = bedrock.resolve_harness(p.tenant_id, harness_id)
+    if resolved_fn is None:
+        raise HTTPException(400, f"harness not ready: {harness_id}")
+    # Carry the user's promptTemplate through to the synthetic fn dict.
+    resolved_fn["promptTemplate"] = fn.get("promptTemplate")
+
     try:
         out, latency, raw = bedrock.invoke_harness(
-            fn,
+            resolved_fn,
             body.text,
             session_key=f"test-{bot_id}-{p.user_id}",
             region=settings.region,
@@ -250,6 +264,10 @@ async def test_bot_function(
         "function.tested",
         p.email,
         f"tested {target}",
-        {"latencyMs": latency, "agentRuntimeArn": fn.get("agentRuntimeArn")},
+        {
+            "latencyMs": latency,
+            "harnessId": harness_id,
+            "agentRuntimeArn": resolved_fn["agentRuntimeArn"],
+        },
     )
     return TestFunctionResponse(output=out, latencyMs=latency, raw=raw)

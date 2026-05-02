@@ -10,24 +10,14 @@ BotStatus = Literal["draft", "deploying", "deployed", "disabled", "error"]
 BotType = Literal["telegram"]
 Visibility = Literal["private", "published"]
 
-# AgentCore runtime ARN, e.g.
-#   arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness
-AGENTCORE_RUNTIME_ARN_RE = r"^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:runtime/.+$"
-
 
 class BedrockHarnessFunction(BaseModel):
     type: Literal["bedrock_harness"] = "bedrock_harness"
-    agentRuntimeArn: str = Field(
-        min_length=20,
-        max_length=2048,
-        pattern=AGENTCORE_RUNTIME_ARN_RE,
-    )
-    qualifier: str | None = None
+    # Reference to a platform-managed Harness item (PK=TENANT#<tid>
+    # SK=HARNESS#<id>). Webhook resolves this to the runtime ARN +
+    # the harness's linked gateway URLs at invoke time.
+    harnessId: str
     promptTemplate: str | None = None
-    # IDs of Gateway items in our DDB. Their MCP URLs are passed to the
-    # AgentCore runtime in the invoke payload so the harness can connect
-    # to them as MCP servers.
-    gatewayIds: list[str] = []
 
 
 # Forward-compatible alias. When a second function type lands (http_webhook,
@@ -148,6 +138,67 @@ class Gateway(BaseModel):
     lastError: str | None = None
     createdAt: str
     updatedAt: str
+
+
+class GatewayTool(BaseModel):
+    name: str
+    description: str = ""
+
+
+class GatewayTestResponse(BaseModel):
+    tools: list[GatewayTool]
+    latencyMs: int
+
+
+HarnessStatus = Literal["creating", "ready", "error"]
+# Allowlist of Bedrock foundation model IDs the platform exposes in the
+# create UI. Operators bake these into the platform container image's
+# behaviour via env-var contract (MODEL_ID).
+HarnessModel = Literal[
+    "anthropic.claude-haiku-4-5-20251001-v1:0",
+    "anthropic.claude-sonnet-4-6",
+    "anthropic.claude-opus-4-7",
+]
+
+
+class HarnessCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    description: str = ""
+    model: HarnessModel
+    systemPrompt: str = Field(default="", max_length=8000)
+    gatewayIds: list[str] = []
+
+
+class HarnessGatewayUpdate(BaseModel):
+    """Only mutable harness field post-create — gateway list.
+
+    `model` and `systemPrompt` are baked into the runtime's env vars at
+    CreateAgentRuntime time; changing them requires delete + recreate.
+    """
+
+    gatewayIds: list[str]
+
+
+class Harness(BaseModel):
+    id: str
+    tenantId: str
+    ownerUserId: str
+    name: str
+    description: str = ""
+    model: HarnessModel
+    systemPrompt: str = ""
+    qualifier: str | None = None
+    gatewayIds: list[str] = []
+    status: HarnessStatus = "creating"
+    agentRuntimeArn: str | None = None
+    agentRuntimeId: str | None = None
+    lastError: str | None = None
+    createdAt: str
+    updatedAt: str
+
+
+class HarnessTestRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4096)
 
 
 class Event(BaseModel):

@@ -1,8 +1,9 @@
 """Bedrock AgentCore harness invocation.
 
-Used by the backend `/test-function` endpoint. The webhook lambda has its
-own copy of this routine inside `webhook/handler.py` to keep its zip artifact
-self-contained (no shared package between the two lambdas).
+Used by `/bots/{id}/test-function` and `/harnesses/{id}/test`. The webhook
+lambda has its own copy of these routines inside `webhook/handler.py` to
+keep its zip artifact self-contained (no shared package between the two
+lambdas).
 """
 
 from __future__ import annotations
@@ -10,8 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from typing import Any
 
 import boto3
+
+from . import dynamo
 
 
 class HarnessError(Exception):
@@ -22,6 +26,32 @@ def _session_id(session_key: str) -> str:
     # AgentCore requires runtimeSessionId length >= 33; pad with a hex digest.
     pad = hashlib.sha256(session_key.encode()).hexdigest()
     return (session_key + "-" + pad)[:64]
+
+
+def resolve_harness(tenant_id: str, harness_id: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Look up a Harness item and resolve its linked Gateway URLs.
+
+    Returns ``(synthetic_fn_dict, gateways)`` where ``synthetic_fn_dict``
+    has the shape ``invoke_harness`` expects (``type``, ``agentRuntimeArn``,
+    ``qualifier``) — or ``None`` if the harness is missing or not ready.
+    Non-ready linked gateways are silently dropped from the returned list
+    so a half-provisioned tool doesn't break the invocation.
+    """
+    item = dynamo.get_harness(tenant_id, harness_id)
+    if not item or item.get("status") != "ready" or not item.get("agentRuntimeArn"):
+        return None, []
+    fn = {
+        "type": "bedrock_harness",
+        "agentRuntimeArn": item["agentRuntimeArn"],
+        "qualifier": item.get("qualifier"),
+    }
+    gateways: list[dict[str, Any]] = []
+    for gid in item.get("gatewayIds") or []:
+        gw = dynamo.get_gateway(tenant_id, gid)
+        if not gw or gw.get("status") != "ready" or not gw.get("gatewayUrl"):
+            continue
+        gateways.append({"id": gid, "url": gw["gatewayUrl"]})
+    return fn, gateways
 
 
 def invoke_harness(

@@ -11,13 +11,12 @@ import { Modal } from "@/components/platform/Modal";
 import { EmptyState } from "@/components/platform/icons";
 import { useToast } from "@/components/platform/Toast";
 import { api } from "@/lib/api";
-import {
-  AGENTCORE_RUNTIME_ARN_RE,
-  type Bot,
-  type BotCommand,
-  type BotFunction,
-  type Event,
-  type Gateway,
+import type {
+  Bot,
+  BotCommand,
+  BotFunction,
+  Event,
+  Harness,
 } from "@/lib/types";
 import { relativeTime } from "@/lib/utils";
 
@@ -167,14 +166,26 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
   );
 }
 
-function fnSummary(fn: BotFunction | null | undefined, fallbackLabel: string): string {
+function harnessLabel(harnesses: Harness[], harnessId: string): string {
+  const h = harnesses.find((x) => x.id === harnessId);
+  return h ? h.name : harnessId;
+}
+
+function fnSummary(
+  fn: BotFunction | null | undefined,
+  harnesses: Harness[],
+  fallbackLabel: string,
+): string {
   if (!fn) return fallbackLabel;
-  const arn = fn.agentRuntimeArn;
-  const tail = arn.split("/").pop() ?? arn;
-  return `harness:${tail}${fn.qualifier ? `@${fn.qualifier}` : ""}`;
+  return `harness:${harnessLabel(harnesses, fn.harnessId)}`;
 }
 
 function OverviewTab({ bot }: { bot: Bot }) {
+  const [harnesses, setHarnesses] = useState<Harness[]>([]);
+  useEffect(() => {
+    api.listHarnesses().then(setHarnesses).catch(() => setHarnesses([]));
+  }, []);
+
   return (
     <div className="grid grid-cols-2 gap-s-6">
       <div className="card p-s-5">
@@ -184,7 +195,7 @@ function OverviewTab({ bot }: { bot: Bot }) {
           <dt className="text-text-mute">webhook</dt><dd className="code truncate">/{bot.webhookPath}</dd>
           <dt className="text-text-mute">secret</dt><dd className="truncate">{bot.secretId}</dd>
           <dt className="text-text-mute">default fn</dt>
-          <dd className="truncate">{fnSummary(bot.defaultFunction, "(none)")}</dd>
+          <dd className="truncate">{fnSummary(bot.defaultFunction, harnesses, "(none)")}</dd>
           <dt className="text-text-mute">deployed at</dt><dd>{relativeTime(bot.deployedAt)}</dd>
           <dt className="text-text-mute">last event</dt><dd>{relativeTime(bot.lastEventAt)}</dd>
         </dl>
@@ -213,7 +224,7 @@ function OverviewTab({ bot }: { bot: Bot }) {
                 <span className="code">{c.cmd}</span>
                 <span className="text-text-mute">→</span>
                 <span className="text-text-dim truncate">
-                  {fnSummary(c.function, "(default)")}
+                  {fnSummary(c.function, harnesses, "(default)")}
                 </span>
               </div>
             ))}
@@ -231,25 +242,16 @@ function FunctionEditor({
   onChange,
   emptyLabel,
   showInheritOption,
-  gateways,
+  harnesses,
 }: {
   value: BotFunction | null | undefined;
   onChange: (next: BotFunction | null) => void;
   emptyLabel: string;
   showInheritOption: boolean;
-  gateways: Gateway[];
+  harnesses: Harness[];
 }) {
-  const arnInvalid = !!value?.agentRuntimeArn && !AGENTCORE_RUNTIME_ARN_RE.test(value.agentRuntimeArn);
   const useDefault = !value;
-  const selectedIds = new Set(value?.gatewayIds ?? []);
-
-  function toggleGateway(id: string) {
-    if (!value) return;
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    onChange({ ...value, gatewayIds: Array.from(next) });
-  }
+  const selected = value ? harnesses.find((h) => h.id === value.harnessId) : undefined;
 
   return (
     <div className="flex flex-col gap-[6px] mt-[6px]">
@@ -260,7 +262,13 @@ function FunctionEditor({
             checked={useDefault}
             onChange={(e) => {
               if (e.target.checked) onChange(null);
-              else onChange({ type: "bedrock_harness", agentRuntimeArn: "", gatewayIds: [] });
+              else {
+                const first = harnesses.find((h) => h.status === "ready");
+                onChange({
+                  type: "bedrock_harness",
+                  harnessId: first?.id ?? "",
+                });
+              }
             }}
           />
           inherit default function
@@ -269,41 +277,30 @@ function FunctionEditor({
       {!useDefault && (
         <>
           <div>
-            <Label>type</Label>
-            <select
-              value={value!.type}
-              onChange={() => { /* only one type today */ }}
-              className="h-[34px] w-full bg-surface border border-border rounded-sm px-[10px] text-body"
-            >
-              <option value="bedrock_harness">bedrock_harness</option>
-            </select>
-          </div>
-          <div>
-            <Label>agentRuntimeArn</Label>
-            <Input
-              mono
-              value={value!.agentRuntimeArn}
-              onChange={(e) =>
-                onChange({ ...value!, agentRuntimeArn: e.target.value })
-              }
-              placeholder="arn:aws:bedrock-agentcore:ap-southeast-2:000000000000:runtime/my-harness"
-            />
-            {arnInvalid && (
-              <div className="font-mono text-mono-sm text-red mt-[4px]">
-                does not match arn:aws:bedrock-agentcore:&lt;region&gt;:&lt;account&gt;:runtime/&lt;name&gt;
+            <Label>harness</Label>
+            {harnesses.length === 0 ? (
+              <div className="font-mono text-mono-sm text-text-mute">
+                no harnesses yet — <a href="/harnesses" className="text-accent">create one</a> first
+              </div>
+            ) : (
+              <select
+                value={value!.harnessId}
+                onChange={(e) => onChange({ ...value!, harnessId: e.target.value })}
+                className="h-[34px] w-full bg-surface border border-border rounded-sm px-[10px] text-body"
+              >
+                <option value="">choose a harness…</option>
+                {harnesses.map((h) => (
+                  <option key={h.id} value={h.id} disabled={h.status !== "ready"}>
+                    🤖 {h.name} {h.status !== "ready" ? `· ${h.status}` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selected && (
+              <div className="font-mono text-mono-sm text-text-mute mt-[4px]">
+                {selected.gatewayIds.length} gateway(s) · model: {selected.model}
               </div>
             )}
-          </div>
-          <div>
-            <Label>qualifier (optional)</Label>
-            <Input
-              mono
-              value={value!.qualifier ?? ""}
-              onChange={(e) =>
-                onChange({ ...value!, qualifier: e.target.value || null })
-              }
-              placeholder="alias or version"
-            />
           </div>
           <div>
             <Label>promptTemplate (optional)</Label>
@@ -315,36 +312,6 @@ function FunctionEditor({
               }
               placeholder="default: {text} (the user's message verbatim)"
             />
-          </div>
-          <div>
-            <Label>gateways (mcp tool sources)</Label>
-            {gateways.length === 0 ? (
-              <div className="font-mono text-mono-sm text-text-mute">
-                no gateways yet — <a href="/gateways" className="text-accent">create one</a> first
-              </div>
-            ) : (
-              <div className="flex flex-col gap-[4px]">
-                {gateways.map((g) => {
-                  const checked = selectedIds.has(g.id);
-                  const disabled = g.status !== "ready";
-                  return (
-                    <label
-                      key={g.id}
-                      className={`flex items-center gap-[6px] font-mono text-mono-sm ${disabled ? "text-text-mute" : "text-text-dim"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={disabled}
-                        onChange={() => toggleGateway(g.id)}
-                      />
-                      🔌 {g.name}
-                      <span className="text-text-mute">· {g.status}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </>
       )}
@@ -420,12 +387,12 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
   const [defaultFunction, setDefaultFunction] = useState<BotFunction | null>(
     bot.defaultFunction ?? null,
   );
-  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [harnesses, setHarnesses] = useState<Harness[]>([]);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
-    api.listGateways().then(setGateways).catch(() => setGateways([]));
+    api.listHarnesses().then(setHarnesses).catch(() => setHarnesses([]));
   }, []);
 
   const dirty =
@@ -434,11 +401,11 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
     JSON.stringify(commands) !== JSON.stringify(bot.commands) ||
     JSON.stringify(defaultFunction ?? null) !== JSON.stringify(bot.defaultFunction ?? null);
 
-  const arnsValid =
-    (!defaultFunction || AGENTCORE_RUNTIME_ARN_RE.test(defaultFunction.agentRuntimeArn)) &&
-    commands.every(
-      (c) => !c.function || AGENTCORE_RUNTIME_ARN_RE.test(c.function.agentRuntimeArn),
-    );
+  // Every configured function must point at a real harness.
+  const fnIsValid = (fn: BotFunction | null | undefined) =>
+    !fn || harnesses.some((h) => h.id === fn.harnessId);
+  const allValid =
+    fnIsValid(defaultFunction) && commands.every((c) => fnIsValid(c.function));
 
   async function save() {
     setSaving(true);
@@ -482,13 +449,19 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
           onChange={setDefaultFunction}
           emptyLabel="(none — bot will not reply when no command matches)"
           showInheritOption={false}
-          gateways={gateways}
+          harnesses={harnesses}
         />
-        {!defaultFunction && (
+        {!defaultFunction && harnesses.length > 0 && (
           <button
             type="button"
             className="font-mono text-mono-sm text-accent mt-[6px]"
-            onClick={() => setDefaultFunction({ type: "bedrock_harness", agentRuntimeArn: "" })}
+            onClick={() => {
+              const first = harnesses.find((h) => h.status === "ready");
+              setDefaultFunction({
+                type: "bedrock_harness",
+                harnessId: first?.id ?? "",
+              });
+            }}
           >
             + configure default function
           </button>
@@ -496,7 +469,7 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
         <TestPanel
           botId={bot.id}
           body={() => ({ useDefault: true })}
-          disabled={!defaultFunction || !AGENTCORE_RUNTIME_ARN_RE.test(defaultFunction.agentRuntimeArn) || dirty}
+          disabled={!defaultFunction || !defaultFunction.harnessId || dirty}
         />
         {dirty && (
           <div className="font-mono text-mono-sm text-text-mute mt-[6px]">
@@ -522,7 +495,7 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
                   }}
                 />
                 <span className="font-mono text-mono-sm text-text-mute">
-                  → {fnSummary(c.function, "default")}
+                  → {fnSummary(c.function, harnesses, "default")}
                 </span>
                 <Button
                   variant="ghost"
@@ -546,7 +519,7 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
                   }}
                   emptyLabel="inherits default function"
                   showInheritOption={true}
-                  gateways={gateways}
+                  harnesses={harnesses}
                 />
                 <TestPanel
                   botId={bot.id}
@@ -572,7 +545,7 @@ function ConfigTab({ bot, onSaved }: { bot: Bot; onSaved: () => void }) {
         </span>
         <Button
           variant="accent"
-          disabled={!dirty || saving || !arnsValid}
+          disabled={!dirty || saving || !allValid}
           onClick={save}
           className="ml-auto"
         >

@@ -40,7 +40,7 @@ Push to `main` → `.github/workflows/deploy.yml` → `terragrunt apply` (state 
 
 ## Bot routing & functions
 
-Each bot routes incoming Telegram messages to a `BotFunction` (today the only variant is `bedrock_harness`, holding an AgentCore `agentRuntimeArn`, optional `qualifier`, and optional `promptTemplate`). There are no static `template` replies — every reply is a harness invocation.
+Each bot routes incoming Telegram messages to a `BotFunction` (today the only variant is `bedrock_harness`, holding a `harnessId` referencing a platform-managed Harness item, plus an optional `promptTemplate`). There are no static `template` replies — every reply is a harness invocation.
 
 Routing precedence (mirrors `_resolve_function` in `webhook/handler.py`):
 
@@ -53,12 +53,54 @@ Routing precedence (mirrors `_resolve_function` in `webhook/handler.py`):
 Notes for next agents:
 
 - `BotCommand.function = null` means *inherit* `Bot.defaultFunction` at runtime; the inheritance is webhook-side, not stored. PATCHing a bot with `{"defaultFunction": null}` clears it; omitting the key leaves it unchanged (relies on `model_dump(exclude_unset=True)` in `routers/bots.py`).
-- **Existing `template`-only bots will silently stop replying** after this change — there's no migration script. Single-tenant Phase 1, low data; just edit them in the UI to add a default harness.
+- A function carries only `harnessId`; the runtime ARN, qualifier, and linked gateway URLs are resolved at invoke time via the Harness item. The webhook does 1 (Bot) + 1 (Harness) + N (Gateway) DDB GetItems per Telegram message — fine for Phase 1 traffic; future optimization is to denormalize the ARN onto the function as a cache.
+- **Existing bots configured with raw `agentRuntimeArn` no longer resolve** after this change — there's no migration script. Single-tenant Phase 1; just edit each bot to point at a platform Harness.
 - AgentCore IAM: both webhook and backend lambda roles have `bedrock-agentcore:InvokeAgentRuntime` on `arn:aws:bedrock-agentcore:*:*:runtime/*` (wildcards because operator may grant cross-account access via the harness's resource policy). Lambda timeouts are 60s on both. If you see Telegram retries, check CloudWatch for harness latency before assuming a bug.
-- Webhook still **never returns 5xx** — harness failures write a `webhook.harness.error` event and return 200. Do not change this; Telegram retries aggressively on 5xx and amplifies cost/latency.
+- Webhook still **never returns 5xx** — harness failures (including not-found / not-ready) write a `webhook.harness.error` event with a `details.reason` field and return 200. Do not change this; Telegram retries aggressively on 5xx and amplifies cost/latency.
 - `runtimeSessionId` is derived deterministically as `tg-{botId}-{chatId}` plus a SHA-256 pad (AgentCore minimum length is 33). No DDB session store — conversational memory is the harness's responsibility.
-- `POST /bots/{id}/test-function` is the dev-loop primitive (validate ARN, see raw response). It writes a `function.tested` event. Do not point at production runtimes that have side effects. If you remove this endpoint, also drop the `bedrock-agentcore:InvokeAgentRuntime` statement from `infra/modules/backend-lambda/main.tf`.
-- The wizard at `app/(app)/bots/new/page.tsx` collects exactly one harness ARN (the bot's `defaultFunction`). Per-command overrides happen on the bot detail page Configuration tab, not in the wizard — keep it that way; ARN typing during onboarding hurts conversion.
+- `POST /bots/{id}/test-function` and `POST /harnesses/{id}/test` both go through `services.bedrock.resolve_harness` + `services.bedrock.invoke_harness`. Removing either endpoint won't simplify the bedrock module.
+- The wizard at `app/(app)/bots/new/page.tsx` collects exactly one harness from a dropdown (the bot's `defaultFunction`). Per-command overrides happen on the bot detail page Configuration tab — keep it that way; harness picking during onboarding is one click, custom config hurts conversion.
+
+## Harnesses (AgentCore Runtime)
+
+A `Harness` is a tenant-scoped AgentCore Runtime provisioned by us. Lives at `PK=TENANT#<tid>` / `SK=HARNESS#<id>`. Each Harness is the deployed agent container with a model + system prompt + linked gateways (the gateways are *tools*, not part of the runtime). Bots reference Harnesses by `harnessId`; Harnesses reference Gateways by `gatewayIds`.
+
+Provisioning sequence on `POST /harnesses`:
+
+1. Validate every `gatewayIds[i]` exists for this tenant.
+2. DDB-put with `status=creating`.
+3. Call `bedrock-agentcore-control:CreateAgentRuntime` with:
+   - `agentRuntimeArtifact.containerConfiguration.containerUri = settings.platform_harness_image_uri`
+   - `roleArn = settings.platform_harness_role_arn`
+   - `environmentVariables = {MODEL_ID, SYSTEM_PROMPT}`
+4. DDB-update with `status=ready`, `agentRuntimeArn`, `agentRuntimeId`, `qualifier`.
+
+**Container contract** (anyone swapping `PLATFORM_HARNESS_IMAGE_URI` must honor it):
+
+- Read `MODEL_ID` and `SYSTEM_PROMPT` from environment variables at startup.
+- Accept invoke-payload `{prompt, gateways: [{id, url}]}` on each request and connect to listed gateways as MCP servers.
+
+Required env vars on the backend lambda (set in `infra/envs/<env>/main.tf`):
+
+- `PLATFORM_HARNESS_IMAGE_URI` — override the compiled-in default (`backend/app/config.py:DEFAULT_PLATFORM_HARNESS_IMAGE_URI`).
+- `PLATFORM_HARNESS_ROLE_ARN` — required at create-harness time. Empty string fails the create with a 502 and `lastError` set; `terraform validate` still passes thanks to a placeholder ARN in the iam:PassRole statement.
+
+Mutability rules:
+
+- `gatewayIds` mutable via `PATCH /harnesses/{id}` (DDB-only, no AWS round-trip — the webhook resolves URLs at invoke time).
+- `model` and `systemPrompt` are immutable in v1. They live as runtime env vars baked at `CreateAgentRuntime`; changing them needs `UpdateAgentRuntime`, which is out of scope. Delete + recreate.
+
+Delete cascade rules:
+
+- `DELETE /harnesses/{id}` is **409-blocked** by any bot whose `defaultFunction` or `commands[*].function` references it.
+- `DELETE /gateways/{id}` is **409-blocked** by any harness whose `gatewayIds` references it. (Bots reference gateways only transitively through a Harness.)
+
+Gotchas:
+
+- `bedrock-agentcore-control:CreateAgentRuntime` field names are best-effort against a firming-up API. If a real apply surfaces `ValidationException`, adjust `services/agentcore_harness.py` only — nothing else sees the AWS shape.
+- The webhook lambda does **NOT** need `bedrock-agentcore-control:*` perms — it only reads Harness items via `dynamodb:GetItem`. Only the backend lambda creates/destroys harnesses.
+- `iam:PassRole` is granted to the backend role on `var.platform_harness_role_arn` (or a placeholder when unset). Don't widen this to `*` — it's a cross-account credential-laundering primitive.
+- `POST /harnesses/{id}/test` lets operators validate a harness from the UI without touching a bot. It writes no event (vs `POST /bots/{id}/test-function` which writes `function.tested`).
 
 ## Gateways (AgentCore Gateway)
 
@@ -70,14 +112,17 @@ A `Gateway` is a tenant-scoped AgentCore Gateway provisioned by us from an OpenA
 
 If any step fails, `services/agentcore_gateway.create` rolls back the partial AWS state before re-raising. The Gateway item flips to `status: error` with `lastError` populated.
 
-**Linking to a harness** is per-function: `BedrockHarnessFunction.gatewayIds: list[str]` lists Gateway IDs whose URLs are forwarded to the AgentCore runtime in the invoke payload as `{"gateways": [{"id", "url"}]}`. The harness implementation must honor this contract — it's *our* convention, not AgentCore's. Webhook resolves gateway URLs via DDB `GetItem` per-id at invoke time and silently drops anything not `status=ready` (so a half-provisioned gateway doesn't break replies).
+**Linking to a harness**: `Harness.gatewayIds` lists Gateway IDs the harness has access to as MCP tools. At invoke time the webhook reads the Harness's `gatewayIds`, fetches each Gateway item, and forwards `{"gateways": [{id, url}]}` in the AgentCore invoke payload. The container is responsible for connecting to those URLs as MCP servers — it's *our* convention, not AgentCore's. Non-ready gateways are silently dropped so a half-provisioned tool doesn't break replies.
+
+`POST /gateways/{id}/test` lets operators validate a deployed gateway from the UI: SigV4-signs an MCP `tools/list` JSON-RPC request to the gateway URL and returns the tool inventory. Confirms reachability, IAM auth, and OpenAPI-to-MCP translation in one round-trip.
 
 **Gotchas:**
 
 - AgentCore control-plane field names (`apiKey`, `protocolType`, `authorizerType`, `targetConfiguration.mcp.openApiSchema.inlinePayload`, `credentialProviderConfigurations`) are best-effort against the firming-up API; if a real `apply` surfaces `ValidationException`, adjust kwargs in `services/agentcore_gateway.py` — nothing else in the codebase depends on the AWS shape.
-- Deleting a Gateway is blocked (409) when any bot's `defaultFunction` or `commands[*].function` references it. Unlink in the bot's Configuration tab first, then delete.
+- Deleting a Gateway is blocked (409) when any **harness** references it (bots reference gateways only transitively through a harness). Unlink in the harness's `gatewayIds` first, then delete.
 - The webhook lambda **does NOT** need `bedrock-agentcore-control:*` perms — it only reads Gateway items from DDB (already covered by the existing `dynamodb:GetItem` grant). Only the backend lambda creates/destroys gateways.
 - OpenAPI specs are stored inline on the Gateway item (capped at 200 KB to fit DDB single-table item budgets). For very large specs, refactor to S3 + reference, not in scope yet.
+- The `/test` endpoint expects a JSON-RPC envelope `{result: {tools: [...]}}` from the gateway. If the AgentCore data plane shape diverges, adjust `agentcore_gateway.list_tools` only.
 
 ## Gotchas / lessons
 

@@ -38,6 +38,16 @@ variable "secrets_prefix_arn" {
   type = string
 }
 
+# IAM role the platform-managed AgentCore harnesses assume. Required by
+# CreateAgentRuntime; passed through iam:PassRole in the policy below.
+# Empty default allowed for dev; the iam:PassRole statement falls back to a
+# never-resolving placeholder ARN so the policy stays valid until the
+# operator wires a real role.
+variable "platform_harness_role_arn" {
+  type    = string
+  default = ""
+}
+
 data "aws_iam_policy_document" "trust" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -95,6 +105,35 @@ data "aws_iam_policy_document" "perms" {
       "bedrock-agentcore-control:ListGateways",
     ]
     resources = ["*"]
+  }
+  # Needed by /harnesses CRUD: the backend provisions AgentCore runtimes
+  # (CreateAgentRuntime) and tears them down on delete.
+  statement {
+    actions = [
+      "bedrock-agentcore-control:CreateAgentRuntime",
+      "bedrock-agentcore-control:UpdateAgentRuntime",
+      "bedrock-agentcore-control:DeleteAgentRuntime",
+      "bedrock-agentcore-control:GetAgentRuntime",
+      "bedrock-agentcore-control:ListAgentRuntimes",
+    ]
+    resources = ["*"]
+  }
+  # CreateAgentRuntime attaches the platform harness role to the new runtime;
+  # passing the role requires explicit iam:PassRole. Falls back to a
+  # placeholder ARN so the policy validates when the operator hasn't wired
+  # a real role yet (CreateAgentRuntime will then fail with a clear AWS
+  # error rather than a terraform-validate one).
+  statement {
+    actions = ["iam:PassRole"]
+    resources = [
+      var.platform_harness_role_arn != "" ? var.platform_harness_role_arn : "arn:aws:iam::000000000000:role/platform-harness-unconfigured",
+    ]
+  }
+  # Gateway data-plane invocation for POST /gateways/{id}/test
+  # (SigV4-signed tools/list against the gateway URL).
+  statement {
+    actions   = ["bedrock-agentcore:InvokeMCPTool"]
+    resources = ["arn:aws:bedrock-agentcore:*:*:gateway/*"]
   }
 }
 

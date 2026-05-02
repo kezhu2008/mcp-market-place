@@ -34,6 +34,21 @@ variable "default_tenant_id" {
   default = "t_default"
 }
 
+# IAM role assumed by platform-managed AgentCore harness runtimes. Operator-
+# supplied; no default. Empty string is allowed in dev — backend will reject
+# CreateAgentRuntime calls with a 502 until set.
+variable "platform_harness_role_arn" {
+  type    = string
+  default = ""
+}
+
+# Override the platform-default container image for harness runtimes.
+# Empty string keeps the compiled-in default in `backend/app/config.py`.
+variable "platform_harness_image_uri" {
+  type    = string
+  default = ""
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -78,18 +93,21 @@ module "webhook_lambda" {
 }
 
 module "backend_lambda" {
-  source             = "../../modules/backend-lambda"
-  name               = "${local.prefix}-backend"
-  source_zip         = "${path.module}/../../../backend/build/function.zip"
-  table_arn          = module.dynamodb.arn
-  secrets_prefix_arn = local.secrets_arn
+  source                    = "../../modules/backend-lambda"
+  name                      = "${local.prefix}-backend"
+  source_zip                = "${path.module}/../../../backend/build/function.zip"
+  table_arn                 = module.dynamodb.arn
+  secrets_prefix_arn        = local.secrets_arn
+  platform_harness_role_arn = var.platform_harness_role_arn
   env = {
-    TABLE_NAME           = module.dynamodb.name
-    SECRETS_PREFIX       = local.secrets_prefix
-    COGNITO_USER_POOL_ID = module.cognito.user_pool_id
-    COGNITO_CLIENT_ID    = module.cognito.client_id
-    WEBHOOK_BASE_URL     = module.webhook_lambda.url
-    DEFAULT_TENANT_ID    = var.default_tenant_id
+    TABLE_NAME                 = module.dynamodb.name
+    SECRETS_PREFIX             = local.secrets_prefix
+    COGNITO_USER_POOL_ID       = module.cognito.user_pool_id
+    COGNITO_CLIENT_ID          = module.cognito.client_id
+    WEBHOOK_BASE_URL           = module.webhook_lambda.url
+    DEFAULT_TENANT_ID          = var.default_tenant_id
+    PLATFORM_HARNESS_ROLE_ARN  = var.platform_harness_role_arn
+    PLATFORM_HARNESS_IMAGE_URI = var.platform_harness_image_uri
   }
 }
 

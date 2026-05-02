@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Bot,
+  Cpu,
   Wrench,
   Server,
   Boxes,
@@ -26,6 +27,7 @@ interface Item {
 const ITEMS: Item[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/bots", label: "Bots", icon: Bot },
+  { href: "/harnesses", label: "Harnesses", icon: Cpu },
   { href: "/gateways", label: "Gateways", icon: Plug },
   { href: "/tools", label: "Tools", icon: Wrench, soon: true },
   { href: "/mcp-servers", label: "MCP Servers", icon: Server, soon: true },

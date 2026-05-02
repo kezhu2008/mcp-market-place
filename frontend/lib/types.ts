@@ -4,18 +4,13 @@ export type BotStatus = "draft" | "deploying" | "deployed" | "disabled" | "error
 export type BotType = "telegram";
 export type Visibility = "private" | "published";
 
-// AgentCore runtime ARN, e.g.
-//   arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness
-export const AGENTCORE_RUNTIME_ARN_RE =
-  /^arn:aws:bedrock-agentcore:[a-z0-9-]+:\d{12}:runtime\/.+$/;
-
 export interface BedrockHarnessFunction {
   type: "bedrock_harness";
-  agentRuntimeArn: string;
-  qualifier?: string | null;
+  // Reference to a platform-managed Harness item. The webhook resolves
+  // this to the runtime ARN + the harness's linked gateway URLs at
+  // invoke time; users never type the ARN themselves.
+  harnessId: string;
   promptTemplate?: string | null;
-  // IDs of Gateway resources to expose to the harness as MCP servers.
-  gatewayIds?: string[];
 }
 
 export type GatewayStatus = "creating" | "ready" | "error";
@@ -42,6 +37,56 @@ export interface GatewayCreate {
   description?: string;
   openapiSpec: string;
   token: string;
+}
+
+export interface GatewayTool {
+  name: string;
+  description: string;
+}
+
+export interface GatewayTestResponse {
+  tools: GatewayTool[];
+  latencyMs: number;
+}
+
+export type HarnessStatus = "creating" | "ready" | "error";
+// Allowlist of Bedrock foundation models the platform exposes in the
+// "Create harness" form. Mirror of the backend `HarnessModel` literal.
+export type HarnessModel =
+  | "anthropic.claude-haiku-4-5-20251001-v1:0"
+  | "anthropic.claude-sonnet-4-6"
+  | "anthropic.claude-opus-4-7";
+
+export const HARNESS_MODELS: { id: HarnessModel; label: string }[] = [
+  { id: "anthropic.claude-haiku-4-5-20251001-v1:0", label: "Claude Haiku 4.5" },
+  { id: "anthropic.claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "anthropic.claude-opus-4-7", label: "Claude Opus 4.7" },
+];
+
+export interface Harness {
+  id: string;
+  tenantId: string;
+  ownerUserId: string;
+  name: string;
+  description: string;
+  model: HarnessModel;
+  systemPrompt: string;
+  qualifier: string | null;
+  gatewayIds: string[];
+  status: HarnessStatus;
+  agentRuntimeArn: string | null;
+  agentRuntimeId: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HarnessCreate {
+  name: string;
+  description?: string;
+  model: HarnessModel;
+  systemPrompt?: string;
+  gatewayIds?: string[];
 }
 
 export type BotFunction = BedrockHarnessFunction;
