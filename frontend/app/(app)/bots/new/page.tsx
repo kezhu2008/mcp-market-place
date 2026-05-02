@@ -63,7 +63,7 @@ export default function NewBotPage() {
         breadcrumbs={[{ label: "bots", href: "/bots" }, { label: "new" }]}
         description="Telegram only in Phase 1."
       />
-      <div className="p-s-8 flex gap-s-8 max-w-[1100px]">
+      <div className="p-s-5 md:p-s-8 flex flex-col lg:flex-row gap-s-6 lg:gap-s-8 max-w-[1100px]">
         <div className="flex-1">
           <div className="flex items-center gap-[10px] mb-s-7 font-mono text-mono-sm">
             <span className={step === 1 ? "text-accent" : "text-text-mute"}>1 · identity</span>
@@ -83,7 +83,7 @@ export default function NewBotPage() {
               </div>
               <div>
                 <Label>type</Label>
-                <div className="flex gap-[8px]">
+                <div className="flex flex-wrap gap-[8px]">
                   <div className="border border-accent bg-accent-soft rounded-sm px-[12px] py-[8px] text-body">Telegram</div>
                   <div className="border border-border rounded-sm px-[12px] py-[8px] text-body text-text-mute">Slack · soon</div>
                   <div className="border border-border rounded-sm px-[12px] py-[8px] text-body text-text-mute">Discord · soon</div>
@@ -173,9 +173,9 @@ export default function NewBotPage() {
                   </Button>
                 </div>
               </div>
-              <div className="flex justify-between gap-[8px] pt-s-4">
+              <div className="flex flex-wrap justify-between gap-[8px] pt-s-4">
                 <Button variant="secondary" onClick={() => setStep(1)}>Back</Button>
-                <div className="flex gap-[8px]">
+                <div className="flex flex-wrap gap-[8px]">
                   <Button variant="secondary" disabled={!canSave || saving} onClick={() => save(false)}>
                     Save as draft
                   </Button>
@@ -187,7 +187,7 @@ export default function NewBotPage() {
             </div>
           )}
         </div>
-        <aside className="w-[280px] shrink-0">
+        <aside className="w-full lg:w-[280px] lg:shrink-0">
           <div className="card p-s-5">
             <div className="overline mb-[8px]">what deploy will do</div>
             <ul className="font-mono text-mono-sm text-text-dim flex flex-col gap-[4px]">

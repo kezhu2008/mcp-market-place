@@ -47,8 +47,8 @@ export default function BotsPage() {
           </Link>
         }
       />
-      <div className="p-s-8 flex flex-col gap-s-6">
-        <div className="flex items-center gap-[10px]">
+      <div className="p-s-5 md:p-s-8 flex flex-col gap-s-6">
+        <div className="flex flex-wrap items-center gap-[10px]">
           {(["all", "deployed", "draft", "error"] as Filter[]).map((f) => (
             <button
               key={f}
@@ -62,7 +62,7 @@ export default function BotsPage() {
               {f} <span className="text-text-mute ml-[4px]">{counts[f]}</span>
             </button>
           ))}
-          <div className="ml-auto w-[240px]">
+          <div className="w-full sm:w-[240px] sm:ml-auto">
             <Input placeholder="search bots" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
@@ -71,7 +71,8 @@ export default function BotsPage() {
         ) : filtered.length === 0 ? (
           <EmptyState title="no bots match these filters" />
         ) : (
-          <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+          <div className="card overflow-hidden min-w-[640px]">
             <div className="grid grid-cols-[1fr_100px_120px_140px_80px] gap-[12px] bg-surface-2 px-s-5 py-[8px] overline">
               <div>name</div>
               <div>type</div>
@@ -95,6 +96,7 @@ export default function BotsPage() {
                 <div className="font-mono text-mono-sm text-text-dim">{b.commands.length}</div>
               </Link>
             ))}
+          </div>
           </div>
         )}
       </div>

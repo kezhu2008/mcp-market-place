@@ -4,7 +4,7 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" description="Account and workspace." />
-      <div className="p-s-8 max-w-[720px]">
+      <div className="p-s-5 md:p-s-8 max-w-[720px]">
         <div className="card p-s-5">
           <div className="overline mb-[10px]">account</div>
           <dl className="grid grid-cols-[140px_1fr] gap-y-[8px] font-mono text-mono">

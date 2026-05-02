@@ -91,7 +91,7 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
     return (
       <>
         <PageHeader title="Loading…" breadcrumbs={[{ label: "bots", href: "/bots" }]} />
-        <div className="p-s-8"><EmptyState title="loading…" /></div>
+        <div className="p-s-5 md:p-s-8"><EmptyState title="loading…" /></div>
       </>
     );
   }
@@ -118,7 +118,7 @@ export default function BotDetailPage({ params }: { params: Promise<{ id: string
         tabs={TABS.map((t) => ({ id: t.id, label: t.label, href: `/bots/${id}?tab=${t.id}` }))}
         activeTab={tab}
       />
-      <div className="p-s-8">
+      <div className="p-s-5 md:p-s-8">
         {tab === "overview" && <OverviewTab bot={bot} />}
         {tab === "configuration" && <ConfigTab bot={bot} onSaved={reload} />}
         {tab === "mcp" && <StubTab name="MCP Bindings" />}
@@ -187,10 +187,10 @@ function OverviewTab({ bot }: { bot: Bot }) {
   }, []);
 
   return (
-    <div className="grid grid-cols-2 gap-s-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-s-6">
       <div className="card p-s-5">
         <div className="overline mb-[10px]">summary</div>
-        <dl className="grid grid-cols-[140px_1fr] gap-y-[8px] font-mono text-mono">
+        <dl className="grid grid-cols-[100px_1fr] md:grid-cols-[140px_1fr] gap-y-[8px] font-mono text-mono">
           <dt className="text-text-mute">type</dt><dd>{bot.type}</dd>
           <dt className="text-text-mute">webhook</dt><dd className="code truncate">/{bot.webhookPath}</dd>
           <dt className="text-text-mute">secret</dt><dd className="truncate">{bot.secretId}</dd>
@@ -213,7 +213,7 @@ function OverviewTab({ bot }: { bot: Bot }) {
           </div>
         </div>
       </div>
-      <div className="card p-s-5 col-span-2">
+      <div className="card p-s-5 md:col-span-2">
         <div className="overline mb-[10px]">commands</div>
         {bot.commands.length === 0 ? (
           <div className="font-mono text-mono text-text-mute">no commands</div>

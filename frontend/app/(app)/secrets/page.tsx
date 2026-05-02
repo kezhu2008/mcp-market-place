@@ -31,13 +31,14 @@ export default function SecretsPage() {
         description="Stored in AWS Secrets Manager. Values never displayed after save."
         right={<Button variant="accent" onClick={() => setCreateOpen(true)}>Create secret</Button>}
       />
-      <div className="p-s-8">
+      <div className="p-s-5 md:p-s-8">
         {loading ? (
           <EmptyState title="loading…" />
         ) : secrets.length === 0 ? (
           <EmptyState title="no secrets yet" sub="create one to deploy a bot" />
         ) : (
-          <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+          <div className="card overflow-hidden min-w-[640px]">
             <div className="grid grid-cols-[1fr_160px_160px_120px] gap-[12px] bg-surface-2 px-s-5 py-[8px] overline">
               <div>name</div>
               <div>last used</div>
@@ -68,6 +69,7 @@ export default function SecretsPage() {
                 </div>
               );
             })}
+          </div>
           </div>
         )}
       </div>

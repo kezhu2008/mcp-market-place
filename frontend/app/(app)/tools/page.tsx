@@ -5,7 +5,7 @@ export default function ToolsPage() {
   return (
     <>
       <PageHeader title="Tools" description="REST endpoints wrapped as reusable actions." />
-      <div className="p-s-8"><EmptyState title="Tools — coming in Phase 2" /></div>
+      <div className="p-s-5 md:p-s-8"><EmptyState title="Tools — coming in Phase 2" /></div>
     </>
   );
 }

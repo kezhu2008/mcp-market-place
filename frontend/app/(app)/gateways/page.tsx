@@ -32,13 +32,14 @@ export default function GatewaysPage() {
         description="AgentCore gateways turn an OpenAPI spec + token into MCP tools your harness can call."
         right={<Button variant="accent" onClick={() => setCreateOpen(true)}>Create gateway</Button>}
       />
-      <div className="p-s-8">
+      <div className="p-s-5 md:p-s-8">
         {loading ? (
           <EmptyState title="loading…" />
         ) : gateways.length === 0 ? (
           <EmptyState title="no gateways yet" sub="create one to give a harness tool access" />
         ) : (
-          <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+          <div className="card overflow-hidden min-w-[760px]">
             <div className="grid grid-cols-[1fr_120px_1fr_120px_120px] gap-[12px] bg-surface-2 px-s-5 py-[8px] overline">
               <div>name</div>
               <div>status</div>
@@ -80,6 +81,7 @@ export default function GatewaysPage() {
                 </div>
               </div>
             ))}
+          </div>
           </div>
         )}
       </div>
