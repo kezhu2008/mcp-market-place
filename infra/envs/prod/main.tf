@@ -42,11 +42,20 @@ variable "platform_harness_role_arn" {
   default = ""
 }
 
-# Override the platform-default container image for harness runtimes.
-# Empty string keeps the compiled-in default in `backend/app/config.py`.
+# Override the platform-built harness image URI. Empty (default) means
+# "use the image we build + push to module.harness_ecr below". Set to a
+# specific URI to pin to an external image (e.g. a vendor-supplied one).
 variable "platform_harness_image_uri" {
   type    = string
   default = ""
+}
+
+# Tag of the platform-built harness image. CI passes the commit SHA; the
+# default makes a fresh `terragrunt apply` from a workstation pull
+# whatever image happens to be tagged `latest`.
+variable "platform_harness_image_tag" {
+  type    = string
+  default = "latest"
 }
 
 data "aws_caller_identity" "current" {}
@@ -85,6 +94,11 @@ module "harness_runtime_role" {
   name   = "${local.prefix}-harness-runtime"
 }
 
+module "harness_ecr" {
+  source = "../../modules/ecr"
+  name   = "${local.prefix}-harness"
+}
+
 locals {
   # Effective role ARN passed to the backend lambda: operator override
   # wins, otherwise the platform-managed role from the module above.
@@ -92,6 +106,14 @@ locals {
     var.platform_harness_role_arn != ""
     ? var.platform_harness_role_arn
     : module.harness_runtime_role.role_arn
+  )
+
+  # Effective harness image URI: operator override wins, otherwise the
+  # platform-built image at the configured tag in our private ECR.
+  effective_harness_image_uri = (
+    var.platform_harness_image_uri != ""
+    ? var.platform_harness_image_uri
+    : "${module.harness_ecr.repository_url}:${var.platform_harness_image_tag}"
   )
 }
 
@@ -122,7 +144,7 @@ module "backend_lambda" {
     WEBHOOK_BASE_URL           = module.webhook_lambda.url
     DEFAULT_TENANT_ID          = var.default_tenant_id
     PLATFORM_HARNESS_ROLE_ARN  = local.effective_harness_role_arn
-    PLATFORM_HARNESS_IMAGE_URI = var.platform_harness_image_uri
+    PLATFORM_HARNESS_IMAGE_URI = local.effective_harness_image_uri
   }
 }
 
@@ -178,4 +200,12 @@ output "cognito_domain" {
 
 output "table_name" {
   value = module.dynamodb.name
+}
+
+output "harness_ecr_repository_url" {
+  value = module.harness_ecr.repository_url
+}
+
+output "harness_ecr_repository_name" {
+  value = module.harness_ecr.repository_name
 }
