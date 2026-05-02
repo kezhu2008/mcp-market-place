@@ -135,7 +135,8 @@ function StatusChip({ status }: { status: Harness["status"] }) {
 function CreateModal({ gateways, onClose }: { gateways: Gateway[]; onClose: () => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [model, setModel] = useState<HarnessModel>(HARNESS_MODELS[1].id);
+  // Default to the cheapest model in the list — DeepSeek V3.
+  const [model, setModel] = useState<HarnessModel>(HARNESS_MODELS[0].id);
   const [systemPrompt, setSystemPrompt] = useState("");
   const [selectedGateways, setSelectedGateways] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
