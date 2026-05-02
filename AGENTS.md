@@ -83,7 +83,7 @@ Provisioning sequence on `POST /harnesses`:
 Required env vars on the backend lambda (set in `infra/envs/<env>/main.tf`):
 
 - `PLATFORM_HARNESS_IMAGE_URI` — override the compiled-in default (`backend/app/config.py:DEFAULT_PLATFORM_HARNESS_IMAGE_URI`).
-- `PLATFORM_HARNESS_ROLE_ARN` — required at create-harness time. Empty string fails the create with a 502 and `lastError` set; `terraform validate` still passes thanks to a placeholder ARN in the iam:PassRole statement.
+- `PLATFORM_HARNESS_ROLE_ARN` — IAM role the AgentCore runtime assumes. **Auto-provisioned** by `infra/modules/harness-runtime-role` when `var.platform_harness_role_arn` is unset (the default). Override the variable to point at an operator-managed role. The auto-provisioned role grants `bedrock:InvokeModel*` on `foundation-model/*`, `bedrock-agentcore:InvokeMCPTool` on `gateway/*`, and CloudWatch logs.
 
 Mutability rules:
 
