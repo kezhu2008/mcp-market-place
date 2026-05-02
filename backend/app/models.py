@@ -152,19 +152,24 @@ class GatewayTestResponse(BaseModel):
 
 HarnessStatus = Literal["creating", "ready", "error"]
 # Allowlist of foundation model IDs the platform exposes in the create UI.
-# The platform container image reads this via the MODEL_ID env var and
-# routes to the right provider SDK. Bedrock model availability varies by
-# region — operators may need to verify each is enabled in their account
-# (Bedrock console → Model access).
+# Model IDs the platform container image passes verbatim to
+# bedrock-runtime.converse via MODEL_ID. These are the IDs available in
+# ap-southeast-2; cross-region invocation profiles are used for the
+# Anthropic models because the foundation IDs there reject on-demand
+# throughput (ValidationException) — the `global.` profile transparently
+# routes the request. Operators must still grant access in
+# Bedrock console → Model access (and submit the use-case form for
+# Anthropic) before any model becomes invocable.
 HarnessModel = Literal[
-    # Anthropic Claude family.
-    "anthropic.claude-haiku-4-5-20251001-v1:0",
-    "anthropic.claude-sonnet-4-6",
-    "anthropic.claude-opus-4-7",
-    # Cheap alternatives — open-weights reasoning + chat models on Bedrock.
-    "deepseek.r1-v1:0",
+    # Anthropic Claude family — must use cross-region inference profile IDs.
+    "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    "global.anthropic.claude-sonnet-4-6",
+    "global.anthropic.claude-opus-4-7",
+    # Open-weights chat models available directly via foundation ID in
+    # ap-southeast-2.
     "deepseek.v3-v1:0",
-    "minimax.abab-6.5s-chat-v1:0",
+    "deepseek.v3.2",
+    "minimax.minimax-m2",
 ]
 
 

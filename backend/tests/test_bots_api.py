@@ -28,7 +28,7 @@ def _make_harness(client, headers, name: str = "h"):
             json={
                 "name": name,
                 "description": "",
-                "model": "anthropic.claude-sonnet-4-6",
+                "model": "global.anthropic.claude-sonnet-4-6",
                 "systemPrompt": "you are a helpful assistant",
                 "gatewayIds": [],
             },

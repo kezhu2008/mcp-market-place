@@ -54,7 +54,7 @@ def _create_harness(client, headers, gateway_ids: list[str] | None = None) -> di
             json={
                 "name": "h",
                 "description": "",
-                "model": "anthropic.claude-sonnet-4-6",
+                "model": "global.anthropic.claude-sonnet-4-6",
                 "systemPrompt": "",
                 "gatewayIds": gateway_ids or [],
             },

@@ -50,24 +50,26 @@ export interface GatewayTestResponse {
 }
 
 export type HarnessStatus = "creating" | "ready" | "error";
-// Allowlist of Bedrock foundation models the platform exposes in the
+// Allowlist of Bedrock model IDs the platform exposes in the
 // "Create harness" form. Mirror of the backend `HarnessModel` literal.
+// Anthropic uses `global.` cross-region inference profiles because the
+// foundation IDs in ap-southeast-2 reject on-demand throughput.
 export type HarnessModel =
-  | "anthropic.claude-haiku-4-5-20251001-v1:0"
-  | "anthropic.claude-sonnet-4-6"
-  | "anthropic.claude-opus-4-7"
-  | "deepseek.r1-v1:0"
+  | "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+  | "global.anthropic.claude-sonnet-4-6"
+  | "global.anthropic.claude-opus-4-7"
   | "deepseek.v3-v1:0"
-  | "minimax.abab-6.5s-chat-v1:0";
+  | "deepseek.v3.2"
+  | "minimax.minimax-m2";
 
 // Order ≈ price ascending so cheap models render first in the dropdown.
 export const HARNESS_MODELS: { id: HarnessModel; label: string }[] = [
   { id: "deepseek.v3-v1:0", label: "DeepSeek V3 · cheap" },
-  { id: "deepseek.r1-v1:0", label: "DeepSeek R1 · cheap reasoning" },
-  { id: "minimax.abab-6.5s-chat-v1:0", label: "MiniMax abab 6.5s · cheap" },
-  { id: "anthropic.claude-haiku-4-5-20251001-v1:0", label: "Claude Haiku 4.5" },
-  { id: "anthropic.claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-  { id: "anthropic.claude-opus-4-7", label: "Claude Opus 4.7" },
+  { id: "deepseek.v3.2", label: "DeepSeek V3.2 · cheap" },
+  { id: "minimax.minimax-m2", label: "MiniMax M2 · cheap" },
+  { id: "global.anthropic.claude-haiku-4-5-20251001-v1:0", label: "Claude Haiku 4.5" },
+  { id: "global.anthropic.claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
+  { id: "global.anthropic.claude-opus-4-7", label: "Claude Opus 4.7" },
 ];
 
 export interface Harness {
