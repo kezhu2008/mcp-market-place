@@ -33,8 +33,12 @@ def load_settings() -> Settings:
         cognito_client_id=os.environ.get("COGNITO_CLIENT_ID", ""),
         webhook_base_url=os.environ.get("WEBHOOK_BASE_URL", ""),
         default_tenant_id=os.environ.get("DEFAULT_TENANT_ID", "t_default"),
-        platform_harness_image_uri=os.environ.get(
-            "PLATFORM_HARNESS_IMAGE_URI", DEFAULT_PLATFORM_HARNESS_IMAGE_URI
+        # `or` (not the second arg to .get) — the tf wiring sets
+        # PLATFORM_HARNESS_IMAGE_URI to var.platform_harness_image_uri which
+        # defaults to "" (no override). An empty value should fall back to
+        # the compiled-in default, not be honoured as the actual URI.
+        platform_harness_image_uri=(
+            os.environ.get("PLATFORM_HARNESS_IMAGE_URI") or DEFAULT_PLATFORM_HARNESS_IMAGE_URI
         ),
         platform_harness_role_arn=os.environ.get("PLATFORM_HARNESS_ROLE_ARN", ""),
     )

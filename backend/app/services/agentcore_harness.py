@@ -41,6 +41,8 @@ def create(
     """
     if not role_arn:
         raise HarnessProvisionError("PLATFORM_HARNESS_ROLE_ARN is not configured")
+    if not image_uri:
+        raise HarnessProvisionError("PLATFORM_HARNESS_IMAGE_URI is not configured")
 
     ctrl = _ctrl(region)
     runtime_arn: str | None = None
@@ -51,6 +53,10 @@ def create(
                 "containerConfiguration": {"containerUri": image_uri},
             },
             roleArn=role_arn,
+            # PUBLIC is the standard mode for runtimes that don't sit in a
+            # customer VPC. Switch to VPC mode out-of-band if the harness
+            # ever needs private network access.
+            networkConfiguration={"networkMode": "PUBLIC"},
             environmentVariables={
                 "MODEL_ID": model,
                 "SYSTEM_PROMPT": system_prompt,

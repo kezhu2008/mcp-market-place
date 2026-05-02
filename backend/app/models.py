@@ -151,13 +151,20 @@ class GatewayTestResponse(BaseModel):
 
 
 HarnessStatus = Literal["creating", "ready", "error"]
-# Allowlist of Bedrock foundation model IDs the platform exposes in the
-# create UI. Operators bake these into the platform container image's
-# behaviour via env-var contract (MODEL_ID).
+# Allowlist of foundation model IDs the platform exposes in the create UI.
+# The platform container image reads this via the MODEL_ID env var and
+# routes to the right provider SDK. Bedrock model availability varies by
+# region — operators may need to verify each is enabled in their account
+# (Bedrock console → Model access).
 HarnessModel = Literal[
+    # Anthropic Claude family.
     "anthropic.claude-haiku-4-5-20251001-v1:0",
     "anthropic.claude-sonnet-4-6",
     "anthropic.claude-opus-4-7",
+    # Cheap alternatives — open-weights reasoning + chat models on Bedrock.
+    "deepseek.r1-v1:0",
+    "deepseek.v3-v1:0",
+    "minimax.abab-6.5s-chat-v1:0",
 ]
 
 
