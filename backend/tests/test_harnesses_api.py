@@ -183,14 +183,13 @@ def test_redeploy_harness_success(aws):
 
 
 def test_redeploy_harness_creates_when_no_runtime_id(aws):
-    """If a prior create failed before storing a runtime id, redeploy
-    falls back to a fresh create."""
+    """If our DB lost the runtime pointer AND the runtime doesn't exist
+    in AgentCore, redeploy falls back to a fresh create."""
     c = _client(aws)
     headers = {"Authorization": "Bearer stub"}
 
     hns = _create_harness(c, headers)
 
-    # Simulate a half-provisioned harness — no runtime id on record.
     from app.services import dynamo
 
     dynamo.update_harness(
@@ -205,6 +204,7 @@ def test_redeploy_harness_creates_when_no_runtime_id(aws):
         "qualifier": None,
     }
     with (
+        patch("app.services.agentcore_harness.find_by_name", return_value=None),
         patch("app.services.agentcore_harness.update") as update,
         patch("app.services.agentcore_harness.create", return_value=fresh) as create,
     ):
@@ -213,6 +213,43 @@ def test_redeploy_harness_creates_when_no_runtime_id(aws):
     update.assert_not_called()
     create.assert_called_once()
     assert r.json()["agentRuntimeId"] == "rt_h2"
+
+
+def test_redeploy_harness_adopts_existing_runtime_by_name(aws):
+    """If our DB lost the pointer but the runtime still exists in
+    AgentCore (e.g. a prior failed redeploy nulled the id but the
+    runtime survived), redeploy adopts it via name lookup and uses
+    update — not create — to avoid ConflictException."""
+    c = _client(aws)
+    headers = {"Authorization": "Bearer stub"}
+
+    hns = _create_harness(c, headers)
+
+    from app.services import dynamo
+
+    dynamo.update_harness(
+        hns["tenantId"],
+        hns["id"],
+        {"status": "error", "agentRuntimeId": None, "agentRuntimeArn": None},
+    )
+
+    found = {
+        "agentRuntimeArn": PROVISIONED["agentRuntimeArn"],
+        "agentRuntimeId": PROVISIONED["agentRuntimeId"],
+    }
+    updated = {**found, "qualifier": None}
+    with (
+        patch("app.services.agentcore_harness.find_by_name", return_value=found) as lookup,
+        patch("app.services.agentcore_harness.update", return_value=updated) as update,
+        patch("app.services.agentcore_harness.create") as create,
+    ):
+        r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
+    assert r.status_code == 200, r.text
+    create.assert_not_called()
+    update.assert_called_once()
+    # Adopted id should be the one returned by lookup.
+    assert update.call_args.kwargs["agent_runtime_id"] == PROVISIONED["agentRuntimeId"]
+    lookup.assert_called_once()
 
 
 def test_redeploy_harness_not_found(aws):
