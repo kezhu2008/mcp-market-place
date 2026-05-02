@@ -38,6 +38,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      # AgentCore harness images must be linux/arm64. Runners are amd64,
+      # so we cross-build via QEMU + buildx.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
       - name: build backend lambda zip
         run: ./scripts/build-backend.sh
 
@@ -73,9 +78,33 @@ jobs:
           # terraform can't derive this without a circular dep between
           # cognito.callback_urls and amplify.default_domain.
           FRONTEND_DOMAIN: main.d30245m5kpo4p6.amplifyapp.com
+          # Tags the harness image with this commit's SHA. The actual build
+          # + push happens after terragrunt apply has created the ECR repo.
+          TF_VAR_platform_harness_image_tag: ${{ github.sha }}
         run: |
           terragrunt init -upgrade --terragrunt-non-interactive
           terragrunt apply -auto-approve --terragrunt-non-interactive
+
+      # Build + push the AgentCore harness image to the ECR repo terragrunt
+      # just provisioned. CreateAgentRuntime later pulls this image when an
+      # operator creates a harness via the UI.
+      - name: build + push harness image
+        working-directory: infra/envs/prod
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_LOCK_TABLE: ${{ secrets.TF_LOCK_TABLE }}
+        run: |
+          REPO_URL="$(terragrunt output -raw harness_ecr_repository_url)"
+          REGISTRY="${REPO_URL%%/*}"
+          TAG="${{ github.sha }}"
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${REGISTRY}"
+          docker buildx build \
+            --platform linux/arm64 \
+            --tag "${REPO_URL}:${TAG}" \
+            --tag "${REPO_URL}:latest" \
+            --push \
+            "${{ github.workspace }}/harness"
 
       - name: smoke test /health
         working-directory: infra/envs/prod

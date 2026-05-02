@@ -82,8 +82,21 @@ Provisioning sequence on `POST /harnesses`:
 
 Required env vars on the backend lambda (set in `infra/envs/<env>/main.tf`):
 
-- `PLATFORM_HARNESS_IMAGE_URI` — override the compiled-in default (`backend/app/config.py:DEFAULT_PLATFORM_HARNESS_IMAGE_URI`).
+- `PLATFORM_HARNESS_IMAGE_URI` — container image AgentCore pulls when `CreateAgentRuntime` runs. **Auto-built** by `.github/workflows/deploy.yml` from `harness/Dockerfile` (a minimal Python container using the `bedrock-agentcore` SDK + Bedrock `converse`); pushed to a private ECR repo provisioned by `infra/modules/ecr`; tagged with the commit SHA. Override `var.platform_harness_image_uri` to pin to an external image instead.
 - `PLATFORM_HARNESS_ROLE_ARN` — IAM role the AgentCore runtime assumes. **Auto-provisioned** by `infra/modules/harness-runtime-role` when `var.platform_harness_role_arn` is unset (the default). Override the variable to point at an operator-managed role. The auto-provisioned role grants `bedrock:InvokeModel*` on `foundation-model/*`, `bedrock-agentcore:InvokeMCPTool` on `gateway/*`, and CloudWatch logs.
+
+Harness image build + deploy flow:
+
+1. CI checkout, set up QEMU + buildx (AgentCore requires `linux/arm64`; runners are amd64).
+2. `terragrunt apply` provisions the ECR repo + sets the lambda env to `<repo_url>:<commit_sha>`.
+3. CI logs into ECR, runs `docker buildx build --platform linux/arm64`, tags with both `<commit_sha>` and `latest`, pushes.
+4. Operators creating a harness via the UI now have a real image to pull. Existing harnesses keep their image (the URI is captured at `CreateAgentRuntime` time).
+
+Brief race window: between step 2 and step 3 the lambda env points at an image that doesn't exist yet. For Phase 1 / single-tenant traffic this is acceptable. Future tightening: build + push first, then apply. Requires the ECR repo to exist out-of-band.
+
+The ECR repo policy (`infra/modules/ecr`) grants pull access to the `bedrock-agentcore.amazonaws.com` service principal; without that, `CreateAgentRuntime` fails with an unauthorized-pull error even though the image exists.
+
+v1 harness image (`harness/app.py`) reads `MODEL_ID` + `SYSTEM_PROMPT` from env, calls Bedrock `converse`, and ignores `payload.gateways`. MCP gateway tool wiring is a follow-up.
 
 Mutability rules:
 
