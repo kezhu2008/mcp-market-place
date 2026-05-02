@@ -93,16 +93,19 @@ data "aws_iam_policy_document" "perms" {
   # Needed by /gateways CRUD: the backend provisions AgentCore gateways
   # from an OpenAPI spec + token (CreateApiKeyCredentialProvider →
   # CreateGateway → CreateGatewayTarget) and tears them down on delete.
+  # Note: the boto3 client name is `bedrock-agentcore-control`, but the
+  # IAM action prefix is `bedrock-agentcore` for both control and data
+  # plane operations.
   statement {
     actions = [
-      "bedrock-agentcore-control:CreateGateway",
-      "bedrock-agentcore-control:CreateGatewayTarget",
-      "bedrock-agentcore-control:CreateApiKeyCredentialProvider",
-      "bedrock-agentcore-control:DeleteGateway",
-      "bedrock-agentcore-control:DeleteGatewayTarget",
-      "bedrock-agentcore-control:DeleteApiKeyCredentialProvider",
-      "bedrock-agentcore-control:GetGateway",
-      "bedrock-agentcore-control:ListGateways",
+      "bedrock-agentcore:CreateGateway",
+      "bedrock-agentcore:CreateGatewayTarget",
+      "bedrock-agentcore:CreateApiKeyCredentialProvider",
+      "bedrock-agentcore:DeleteGateway",
+      "bedrock-agentcore:DeleteGatewayTarget",
+      "bedrock-agentcore:DeleteApiKeyCredentialProvider",
+      "bedrock-agentcore:GetGateway",
+      "bedrock-agentcore:ListGateways",
     ]
     resources = ["*"]
   }
@@ -110,11 +113,11 @@ data "aws_iam_policy_document" "perms" {
   # (CreateAgentRuntime) and tears them down on delete.
   statement {
     actions = [
-      "bedrock-agentcore-control:CreateAgentRuntime",
-      "bedrock-agentcore-control:UpdateAgentRuntime",
-      "bedrock-agentcore-control:DeleteAgentRuntime",
-      "bedrock-agentcore-control:GetAgentRuntime",
-      "bedrock-agentcore-control:ListAgentRuntimes",
+      "bedrock-agentcore:CreateAgentRuntime",
+      "bedrock-agentcore:UpdateAgentRuntime",
+      "bedrock-agentcore:DeleteAgentRuntime",
+      "bedrock-agentcore:GetAgentRuntime",
+      "bedrock-agentcore:ListAgentRuntimes",
     ]
     resources = ["*"]
   }
