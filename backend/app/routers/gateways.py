@@ -73,7 +73,8 @@ async def create_gateway(body: GatewayCreate, p: Principal = Depends(current_pri
 
     try:
         provisioned = agentcore_gateway.create(
-            name=f"{p.tenant_id}-{gateway_id}",
+            # AgentCore name regex: [a-zA-Z][a-zA-Z0-9_]{0,47} — no hyphens.
+            name=f"{p.tenant_id}_{gateway_id}",
             openapi_spec=body.openapiSpec,
             token=body.token,
             region=settings.region,
