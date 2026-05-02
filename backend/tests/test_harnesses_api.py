@@ -24,7 +24,7 @@ def _create_harness(client, headers, gateway_ids: list[str] | None = None, name:
             json={
                 "name": name,
                 "description": "",
-                "model": "anthropic.claude-sonnet-4-6",
+                "model": "global.anthropic.claude-sonnet-4-6",
                 "systemPrompt": "you are kind",
                 "gatewayIds": gateway_ids or [],
             },
@@ -61,7 +61,7 @@ def test_create_harness_provisions_and_returns_ready(aws):
     hns = _create_harness(c, headers)
     assert hns["status"] == "ready"
     assert hns["agentRuntimeArn"] == PROVISIONED["agentRuntimeArn"]
-    assert hns["model"] == "anthropic.claude-sonnet-4-6"
+    assert hns["model"] == "global.anthropic.claude-sonnet-4-6"
     assert hns["systemPrompt"] == "you are kind"
 
 
@@ -74,7 +74,7 @@ def test_create_harness_failure_marks_error(aws):
             "/harnesses",
             json={
                 "name": "h",
-                "model": "anthropic.claude-sonnet-4-6",
+                "model": "global.anthropic.claude-sonnet-4-6",
                 "systemPrompt": "",
                 "gatewayIds": [],
             },
@@ -178,7 +178,7 @@ def test_redeploy_harness_success(aws):
     # target the existing runtime by id.
     kwargs = update.call_args.kwargs
     assert kwargs["agent_runtime_id"] == PROVISIONED["agentRuntimeId"]
-    assert kwargs["model"] == "anthropic.claude-sonnet-4-6"
+    assert kwargs["model"] == "global.anthropic.claude-sonnet-4-6"
     assert kwargs["system_prompt"] == "you are kind"
 
 

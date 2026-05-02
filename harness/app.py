@@ -16,6 +16,7 @@ from typing import Any
 
 import boto3
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from botocore.exceptions import ClientError
 
 # Set at container start by AgentCore's environmentVariables (see
 # backend/app/services/agentcore_harness.py:create). Defaults make local
@@ -42,7 +43,20 @@ def invoke(payload: dict[str, Any]) -> dict[str, Any]:
     if SYSTEM_PROMPT:
         kwargs["system"] = [{"text": SYSTEM_PROMPT}]
 
-    resp = _bedrock.converse(**kwargs)
+    # Surface Bedrock errors as a structured response instead of raising —
+    # AgentCore otherwise collapses any exception to a bare 500
+    # (RuntimeClientError) at the InvokeAgentRuntime boundary, which
+    # hides the actual cause (model access not granted, ThrottlingException,
+    # missing inference profile, etc.) from the platform UI.
+    try:
+        resp = _bedrock.converse(**kwargs)
+    except ClientError as e:
+        err = e.response.get("Error", {})
+        return {
+            "output": f"[bedrock {err.get('Code', 'Error')}] {err.get('Message', str(e))}",
+            "error": True,
+            "modelId": MODEL_ID,
+        }
     blocks = resp["output"]["message"]["content"]
     text = "".join(b.get("text", "") for b in blocks)
     return {"output": text}
