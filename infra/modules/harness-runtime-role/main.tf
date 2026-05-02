@@ -45,6 +45,22 @@ data "aws_iam_policy_document" "perms" {
     actions   = ["bedrock-agentcore:InvokeMCPTool"]
     resources = ["arn:aws:bedrock-agentcore:*:*:gateway/*"]
   }
+  // ECR image pull. AgentCore validates these are present on the
+  // execution role at CreateAgentRuntime time, even though the ECR repo
+  // also grants the AgentCore service principal — both are required.
+  // GetAuthorizationToken doesn't support resource-level scoping.
+  statement {
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+  statement {
+    actions = [
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:DescribeImages",
+    ]
+    resources = ["arn:aws:ecr:*:*:repository/*"]
+  }
   statement {
     actions = [
       "logs:CreateLogGroup",
