@@ -73,7 +73,9 @@ async def create_harness(body: HarnessCreate, p: Principal = Depends(current_pri
 
     try:
         provisioned = agentcore_harness.create(
-            name=f"{p.tenant_id}-{harness_id}",
+            # AgentCore agentRuntimeName must match [a-zA-Z][a-zA-Z0-9_]{0,47}
+            # — letters/digits/underscores only, no hyphens.
+            name=f"{p.tenant_id}_{harness_id}",
             model=body.model,
             system_prompt=body.systemPrompt,
             image_uri=settings.platform_harness_image_uri,

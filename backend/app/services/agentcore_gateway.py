@@ -59,7 +59,7 @@ def create(
 
     try:
         cp = ctrl.create_api_key_credential_provider(
-            name=f"{name}-cred",
+            name=f"{name}_cred",
             apiKey=token,
         )
         cred_arn = cp.get("credentialProviderArn") or cp.get("arn")
@@ -80,7 +80,7 @@ def create(
 
         tgt = ctrl.create_gateway_target(
             gatewayIdentifier=gateway_arn,
-            name=f"{name}-target",
+            name=f"{name}_target",
             targetConfiguration={
                 "mcp": {
                     "openApiSchema": {"inlinePayload": openapi_spec},
