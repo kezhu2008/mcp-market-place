@@ -107,6 +107,8 @@ export const api = {
       body: JSON.stringify({ gatewayIds }),
     }),
   deleteHarness: (id: string) => request<void>(`/harnesses/${id}`, { method: "DELETE" }),
+  redeployHarness: (id: string) =>
+    request<Harness>(`/harnesses/${id}/redeploy`, { method: "POST" }),
   testHarness: (id: string, text: string) =>
     request<TestFunctionResponse>(`/harnesses/${id}/test`, {
       method: "POST",

@@ -19,6 +19,21 @@ export default function HarnessesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [testFor, setTestFor] = useState<Harness | null>(null);
   const [deleteFor, setDeleteFor] = useState<Harness | null>(null);
+  const [redeployingId, setRedeployingId] = useState<string | null>(null);
+  const toast = useToast();
+
+  async function redeploy(h: Harness) {
+    setRedeployingId(h.id);
+    try {
+      await api.redeployHarness(h.id);
+      toast.push({ kind: "success", title: "Redeployed", body: `🤖 ${h.name}` });
+    } catch (e) {
+      toast.push({ kind: "error", title: "Redeploy failed", body: (e as Error).message });
+    } finally {
+      setRedeployingId(null);
+      load();
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -93,6 +108,16 @@ export default function HarnessesPage() {
                   >
                     Test
                   </Button>
+                  {h.status !== "creating" && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={redeployingId === h.id}
+                      onClick={() => redeploy(h)}
+                    >
+                      {redeployingId === h.id ? "…" : "Redeploy"}
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => setDeleteFor(h)}>
                     Delete
                   </Button>
@@ -262,17 +287,21 @@ function TestModal({ harness, onClose }: { harness: Harness; onClose: () => void
   const [busy, setBusy] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const toast = useToast();
 
   async function run() {
     setBusy(true);
     setOutput(null);
+    setError(null);
     try {
       const res = await api.testHarness(harness.id, text);
       setOutput(res.output);
       setLatencyMs(res.latencyMs);
     } catch (e) {
-      toast.push({ kind: "error", title: "Test failed", body: (e as Error).message });
+      const msg = (e as Error).message;
+      setError(msg);
+      toast.push({ kind: "error", title: "Test failed", body: msg });
     } finally {
       setBusy(false);
     }
@@ -308,6 +337,12 @@ function TestModal({ harness, onClose }: { harness: Harness; onClose: () => void
               output · {latencyMs}ms
             </div>
             <pre className="whitespace-pre-wrap text-text-dim">{output}</pre>
+          </div>
+        )}
+        {error !== null && (
+          <div className="bg-surface-2 border border-border border-l-[3px] border-l-red rounded-sm p-[10px] font-mono text-mono-sm">
+            <div className="text-red mb-[4px]">error</div>
+            <pre className="whitespace-pre-wrap break-words text-text-dim">{error}</pre>
           </div>
         )}
       </div>
