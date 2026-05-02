@@ -164,9 +164,7 @@ def test_redeploy_harness_success(aws):
         "agentRuntimeId": PROVISIONED["agentRuntimeId"],
         "qualifier": None,
     }
-    with patch(
-        "app.services.agentcore_harness.update", return_value=updated_provisioned
-    ) as update:
+    with patch("app.services.agentcore_harness.update", return_value=updated_provisioned) as update:
         r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
 
     assert r.status_code == 200, r.text
@@ -246,9 +244,7 @@ def test_redeploy_harness_failure_marks_error(aws):
 
     hns = _create_harness(c, headers)
 
-    with patch(
-        "app.services.agentcore_harness.update", side_effect=RuntimeError("aws boom")
-    ):
+    with patch("app.services.agentcore_harness.update", side_effect=RuntimeError("aws boom")):
         r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
     assert r.status_code == 502, r.text
 
