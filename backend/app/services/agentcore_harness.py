@@ -37,7 +37,12 @@ def create(
 ) -> dict:
     """Provision an AgentCore runtime.
 
-    Returns ``{agentRuntimeArn, agentRuntimeId, qualifier}``.
+    Returns ``{agentRuntimeArn, agentRuntimeId, qualifier}``. The qualifier
+    is intentionally always ``None`` — the InvokeAgentRuntime API expects
+    an *endpoint name* (e.g. ``DEFAULT``), not a numeric version, and a
+    ``DEFAULT`` endpoint pointing at the latest version is auto-created.
+    Passing the numeric ``agentRuntimeVersion`` here causes
+    ResourceNotFoundException at invoke time.
     """
     if not role_arn:
         raise HarnessProvisionError("PLATFORM_HARNESS_ROLE_ARN is not configured")
@@ -53,9 +58,6 @@ def create(
                 "containerConfiguration": {"containerUri": image_uri},
             },
             roleArn=role_arn,
-            # PUBLIC is the standard mode for runtimes that don't sit in a
-            # customer VPC. Switch to VPC mode out-of-band if the harness
-            # ever needs private network access.
             networkConfiguration={"networkMode": "PUBLIC"},
             environmentVariables={
                 "MODEL_ID": model,
@@ -64,13 +66,12 @@ def create(
         )
         runtime_arn = resp.get("agentRuntimeArn") or resp.get("arn")
         runtime_id = resp.get("agentRuntimeId") or resp.get("id")
-        qualifier = resp.get("agentRuntimeVersion") or resp.get("version")
         if not runtime_arn or not runtime_id:
             raise HarnessProvisionError(f"create_agent_runtime response missing arn/id: {resp!r}")
         return {
             "agentRuntimeArn": runtime_arn,
             "agentRuntimeId": runtime_id,
-            "qualifier": qualifier,
+            "qualifier": None,
         }
     except Exception:
         # Best-effort cleanup if a partial state was created.
@@ -80,6 +81,50 @@ def create(
             except Exception:  # noqa: S110 — already failing, swallow
                 pass
         raise
+
+
+def update(
+    agent_runtime_id: str,
+    model: str,
+    system_prompt: str,
+    image_uri: str,
+    role_arn: str,
+    region: str,
+) -> dict:
+    """Update an existing AgentCore runtime in place — bumps its version
+    and points the DEFAULT endpoint at it. Preferred over delete+create
+    for a redeploy: ``delete_agent_runtime`` is async, so an immediate
+    recreate with the same name races and hits ConflictException.
+
+    Returns the same shape as ``create()``.
+    """
+    if not role_arn:
+        raise HarnessProvisionError("PLATFORM_HARNESS_ROLE_ARN is not configured")
+    if not image_uri:
+        raise HarnessProvisionError("PLATFORM_HARNESS_IMAGE_URI is not configured")
+
+    ctrl = _ctrl(region)
+    resp = ctrl.update_agent_runtime(
+        agentRuntimeId=agent_runtime_id,
+        agentRuntimeArtifact={
+            "containerConfiguration": {"containerUri": image_uri},
+        },
+        roleArn=role_arn,
+        networkConfiguration={"networkMode": "PUBLIC"},
+        environmentVariables={
+            "MODEL_ID": model,
+            "SYSTEM_PROMPT": system_prompt,
+        },
+    )
+    runtime_arn = resp.get("agentRuntimeArn") or resp.get("arn")
+    runtime_id = resp.get("agentRuntimeId") or resp.get("id") or agent_runtime_id
+    if not runtime_arn:
+        raise HarnessProvisionError(f"update_agent_runtime response missing arn: {resp!r}")
+    return {
+        "agentRuntimeArn": runtime_arn,
+        "agentRuntimeId": runtime_id,
+        "qualifier": None,
+    }
 
 
 def destroy(agent_runtime_arn: str | None, region: str) -> None:
