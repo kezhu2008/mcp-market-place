@@ -42,7 +42,12 @@ def create(
     if not role_arn:
         raise HarnessProvisionError("PLATFORM_HARNESS_ROLE_ARN is not configured")
     if not image_uri:
-        raise HarnessProvisionError("PLATFORM_HARNESS_IMAGE_URI is not configured")
+        raise HarnessProvisionError(
+            "PLATFORM_HARNESS_IMAGE_URI is not configured. Set it on the "
+            "backend lambda (via terraform var.platform_harness_image_uri) "
+            "to an AgentCore-compatible container image URI you own — the "
+            "platform doesn't ship a default image yet."
+        )
 
     ctrl = _ctrl(region)
     runtime_arn: str | None = None
