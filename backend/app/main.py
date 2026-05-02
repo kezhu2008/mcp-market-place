@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from mangum import Mangum
 
 from . import logging as log
-from .routers import bots, dashboard, events, gateways, secrets
+from .routers import bots, dashboard, events, gateways, harnesses, secrets
 
 log.configure_logging()
 
@@ -52,6 +52,7 @@ app.include_router(secrets.router)
 app.include_router(events.router)
 app.include_router(dashboard.router)
 app.include_router(gateways.router)
+app.include_router(harnesses.router)
 
 
 handler = Mangum(app, lifespan="off")

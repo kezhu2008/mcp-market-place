@@ -9,7 +9,7 @@ from ulid import ULID
 from .. import logging as log
 from ..config import settings
 from ..deps import Principal, current_principal
-from ..models import Gateway, GatewayCreate
+from ..models import Gateway, GatewayCreate, GatewayTestResponse, GatewayTool
 from ..services import agentcore_gateway, dynamo, secrets_manager
 
 router = APIRouter(prefix="/gateways", tags=["gateways"])
@@ -112,22 +112,40 @@ async def create_gateway(body: GatewayCreate, p: Principal = Depends(current_pri
     return _to_model(updated)
 
 
+@router.post("/{gateway_id}/test", response_model=GatewayTestResponse)
+async def test_gateway(gateway_id: str, p: Principal = Depends(current_principal)) -> GatewayTestResponse:
+    item = dynamo.get_gateway(p.tenant_id, gateway_id)
+    if not item:
+        raise HTTPException(404, "gateway not found")
+    if item.get("status") != "ready" or not item.get("gatewayUrl"):
+        raise HTTPException(400, f"gateway is {item.get('status')}, not ready")
+
+    try:
+        tools, latency = agentcore_gateway.list_tools(
+            gateway_url=item["gatewayUrl"],
+            region=settings.region,
+        )
+    except agentcore_gateway.GatewayInvocationError as e:
+        raise HTTPException(502, str(e)) from e
+
+    return GatewayTestResponse(
+        tools=[GatewayTool(**t) for t in tools],
+        latencyMs=latency,
+    )
+
+
 @router.delete("/{gateway_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_gateway(gateway_id: str, p: Principal = Depends(current_principal)) -> None:
     item = dynamo.get_gateway(p.tenant_id, gateway_id)
     if not item:
         raise HTTPException(404, "gateway not found")
 
-    # Block deletion if any bot's function references it.
-    bots = dynamo.list_bots(p.tenant_id)
-    in_use: list[str] = []
-    for b in bots:
-        for fn in _all_functions(b):
-            if gateway_id in (fn.get("gatewayIds") or []):
-                in_use.append(b["id"])
-                break
+    # Block deletion if any harness references this gateway. Bots no longer
+    # carry gatewayIds directly; their reference is via a Harness.
+    harnesses = dynamo.list_harnesses(p.tenant_id)
+    in_use = [h["id"] for h in harnesses if gateway_id in (h.get("gatewayIds") or [])]
     if in_use:
-        raise HTTPException(409, f"gateway in use by bots: {', '.join(in_use)}")
+        raise HTTPException(409, f"gateway in use by harnesses: {', '.join(in_use)}")
 
     agentcore_gateway.destroy(
         gateway_arn=item.get("gatewayArn"),
@@ -141,11 +159,3 @@ async def delete_gateway(gateway_id: str, p: Principal = Depends(current_princip
         log.log(30, "gateway.secret_cleanup_failed", gateway_id=gateway_id, error=str(e))
     dynamo.delete_gateway(p.tenant_id, gateway_id)
     log.log(20, "gateway.deleted", gateway_id=gateway_id, actor=p.email)
-
-
-def _all_functions(bot: dict[str, Any]):
-    if bot.get("defaultFunction"):
-        yield bot["defaultFunction"]
-    for c in bot.get("commands") or []:
-        if c.get("function"):
-            yield c["function"]

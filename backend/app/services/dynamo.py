@@ -10,6 +10,7 @@ Items:
     Bot     : PK=TENANT#<tid>  SK=BOT#<botId>      GSI1PK=WEBHOOK#<path>  GSI1SK=BOT
     Secret  : PK=TENANT#<tid>  SK=SECRET#<secId>
     Gateway : PK=TENANT#<tid>  SK=GATEWAY#<gwId>
+    Harness : PK=TENANT#<tid>  SK=HARNESS#<hnsId>
     Event   : PK=BOT#<botId>   SK=EVENT#<ts>#<ulid>  GSI2PK=BOT#<botId>  GSI2SK=EVENT#<ts>
 """
 
@@ -166,6 +167,48 @@ def update_gateway(tenant_id: str, gw_id: str, updates: dict[str, Any]) -> dict[
 
 def delete_gateway(tenant_id: str, gw_id: str) -> None:
     _table().delete_item(Key={"PK": f"TENANT#{tenant_id}", "SK": f"GATEWAY#{gw_id}"})
+
+
+# ── Harnesses ───────────────────────────────────────────────────────
+def put_harness(hns: dict[str, Any]) -> None:
+    _table().put_item(
+        Item={
+            "PK": f"TENANT#{hns['tenantId']}",
+            "SK": f"HARNESS#{hns['id']}",
+            **hns,
+        }
+    )
+
+
+def get_harness(tenant_id: str, hns_id: str) -> dict[str, Any] | None:
+    res = _table().get_item(Key={"PK": f"TENANT#{tenant_id}", "SK": f"HARNESS#{hns_id}"})
+    return res.get("Item")
+
+
+def list_harnesses(tenant_id: str) -> list[dict[str, Any]]:
+    res = _table().query(
+        KeyConditionExpression=Key("PK").eq(f"TENANT#{tenant_id}") & Key("SK").begins_with("HARNESS#"),
+    )
+    return res.get("Items", [])
+
+
+def update_harness(tenant_id: str, hns_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+    updates = {**updates, "updatedAt": _now()}
+    expr_names = {f"#{k}": k for k in updates}
+    expr_values = {f":{k}": v for k, v in updates.items()}
+    update_expr = "SET " + ", ".join(f"#{k} = :{k}" for k in updates)
+    res = _table().update_item(
+        Key={"PK": f"TENANT#{tenant_id}", "SK": f"HARNESS#{hns_id}"},
+        UpdateExpression=update_expr,
+        ExpressionAttributeNames=expr_names,
+        ExpressionAttributeValues=expr_values,
+        ReturnValues="ALL_NEW",
+    )
+    return res["Attributes"]
+
+
+def delete_harness(tenant_id: str, hns_id: str) -> None:
+    _table().delete_item(Key={"PK": f"TENANT#{tenant_id}", "SK": f"HARNESS#{hns_id}"})
 
 
 # ── Events ──────────────────────────────────────────────────────────

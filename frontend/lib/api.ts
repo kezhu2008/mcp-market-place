@@ -8,6 +8,9 @@ import type {
   Event,
   Gateway,
   GatewayCreate,
+  GatewayTestResponse,
+  Harness,
+  HarnessCreate,
   Secret,
   TestFunctionRequest,
   TestFunctionResponse,
@@ -90,6 +93,25 @@ export const api = {
   createGateway: (data: GatewayCreate) =>
     request<Gateway>("/gateways", { method: "POST", body: JSON.stringify(data) }),
   deleteGateway: (id: string) => request<void>(`/gateways/${id}`, { method: "DELETE" }),
+  testGateway: (id: string) =>
+    request<GatewayTestResponse>(`/gateways/${id}/test`, { method: "POST" }),
+
+  // Harnesses
+  listHarnesses: () => request<Harness[]>("/harnesses"),
+  getHarness: (id: string) => request<Harness>(`/harnesses/${id}`),
+  createHarness: (data: HarnessCreate) =>
+    request<Harness>("/harnesses", { method: "POST", body: JSON.stringify(data) }),
+  updateHarnessGateways: (id: string, gatewayIds: string[]) =>
+    request<Harness>(`/harnesses/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ gatewayIds }),
+    }),
+  deleteHarness: (id: string) => request<void>(`/harnesses/${id}`, { method: "DELETE" }),
+  testHarness: (id: string, text: string) =>
+    request<TestFunctionResponse>(`/harnesses/${id}/test`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
 
   // Events
   listBotEvents: (botId: string, limit = 50) =>

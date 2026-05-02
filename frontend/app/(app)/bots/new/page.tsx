@@ -6,11 +6,7 @@ import { PageHeader } from "@/components/platform/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { api } from "@/lib/api";
-import {
-  AGENTCORE_RUNTIME_ARN_RE,
-  type BotCommand,
-  type Secret,
-} from "@/lib/types";
+import type { BotCommand, Harness, Secret } from "@/lib/types";
 import { useToast } from "@/components/platform/Toast";
 
 export default function NewBotPage() {
@@ -23,21 +19,22 @@ export default function NewBotPage() {
   // Wizard-time commands have no per-command function override; all commands
   // (and non-slash messages) inherit the default harness configured below.
   const [commands, setCommands] = useState<BotCommand[]>([{ cmd: "/ping" }]);
-  const [defaultArn, setDefaultArn] = useState("");
+  const [defaultHarnessId, setDefaultHarnessId] = useState("");
   const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [harnesses, setHarnesses] = useState<Harness[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.listSecrets().then(setSecrets).catch(() => setSecrets([]));
+    api.listHarnesses().then(setHarnesses).catch(() => setHarnesses([]));
   }, []);
 
   const canNext1 = name.trim().length > 0 && name.length <= 64;
-  const arnValid = AGENTCORE_RUNTIME_ARN_RE.test(defaultArn);
   const canSave =
     canNext1 &&
     !!secretId &&
     commands.every((c) => c.cmd.startsWith("/") && c.cmd.length > 1) &&
-    arnValid;
+    !!defaultHarnessId;
 
   async function save(deploy: boolean) {
     if (!canSave) return;
@@ -48,7 +45,7 @@ export default function NewBotPage() {
         description,
         secretId,
         commands,
-        defaultFunction: { type: "bedrock_harness", agentRuntimeArn: defaultArn },
+        defaultFunction: { type: "bedrock_harness", harnessId: defaultHarnessId },
       });
       if (deploy) await api.deployBot(bot.id);
       toast.push({ kind: "success", title: deploy ? "Deployed" : "Saved as draft", body: bot.name });
@@ -120,21 +117,28 @@ export default function NewBotPage() {
               </div>
 
               <div>
-                <Label>default harness (Bedrock AgentCore runtime ARN)</Label>
-                <Input
-                  mono
-                  value={defaultArn}
-                  onChange={(e) => setDefaultArn(e.target.value)}
-                  placeholder="arn:aws:bedrock-agentcore:ap-southeast-2:000000000000:runtime/my-harness"
-                />
+                <Label>default harness</Label>
+                {harnesses.length === 0 ? (
+                  <div className="font-mono text-mono-sm text-text-mute">
+                    no harnesses yet — <a href="/harnesses" className="text-accent">create one</a> first
+                  </div>
+                ) : (
+                  <select
+                    value={defaultHarnessId}
+                    onChange={(e) => setDefaultHarnessId(e.target.value)}
+                    className="h-[34px] w-full bg-surface border border-border rounded-sm px-[10px] text-body"
+                  >
+                    <option value="">choose a harness…</option>
+                    {harnesses.map((h) => (
+                      <option key={h.id} value={h.id} disabled={h.status !== "ready"}>
+                        🤖 {h.name} {h.status !== "ready" ? `· ${h.status}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <div className="font-mono text-mono-sm text-text-mute mt-[4px]">
                   every command and non-slash message routes to this harness by default. add per-command overrides after creation.
                 </div>
-                {defaultArn && !arnValid && (
-                  <div className="font-mono text-mono-sm text-red mt-[4px]">
-                    does not match arn:aws:bedrock-agentcore:&lt;region&gt;:&lt;account&gt;:runtime/&lt;name&gt;
-                  </div>
-                )}
               </div>
 
               <div>

@@ -126,22 +126,38 @@ def _session_id(bot_id: str, chat_id: Any) -> str:
     return (base + "-" + pad)[:64]
 
 
-def _resolve_gateways(tenant_id: str, gateway_ids: list[str]) -> list[dict]:
-    """Look up Gateway items by id; drop anything that isn't ready."""
-    out: list[dict] = []
-    if not gateway_ids:
-        return out
+def _resolve_harness(tenant_id: str, harness_id: str) -> tuple[dict | None, list[dict], str | None]:
+    """Look up a Harness item; resolve its linked Gateway URLs.
+
+    Returns ``(synthetic_fn, gateways, reason)``. ``reason`` is one of
+    ``None`` (success), ``"harness_not_found"``, or ``"harness_not_ready"``.
+    """
     table = _table()
-    for gid in gateway_ids:
+    try:
+        res = table.get_item(Key={"PK": f"TENANT#{tenant_id}", "SK": f"HARNESS#{harness_id}"})
+    except Exception:  # noqa: S112 — webhook never 5xx
+        return None, [], "harness_not_found"
+    item = res.get("Item")
+    if not item:
+        return None, [], "harness_not_found"
+    if item.get("status") != "ready" or not item.get("agentRuntimeArn"):
+        return None, [], "harness_not_ready"
+    fn = {
+        "type": "bedrock_harness",
+        "agentRuntimeArn": item["agentRuntimeArn"],
+        "qualifier": item.get("qualifier"),
+    }
+    gateways: list[dict] = []
+    for gid in item.get("gatewayIds") or []:
         try:
-            res = table.get_item(Key={"PK": f"TENANT#{tenant_id}", "SK": f"GATEWAY#{gid}"})
-        except Exception:  # noqa: S112 — degrade gracefully; webhook never 5xx
+            gres = table.get_item(Key={"PK": f"TENANT#{tenant_id}", "SK": f"GATEWAY#{gid}"})
+        except Exception:  # noqa: S112
             continue
-        item = res.get("Item")
-        if not item or item.get("status") != "ready" or not item.get("gatewayUrl"):
+        gitem = gres.get("Item")
+        if not gitem or gitem.get("status") != "ready" or not gitem.get("gatewayUrl"):
             continue
-        out.append({"id": gid, "url": item["gatewayUrl"]})
-    return out
+        gateways.append({"id": gid, "url": gitem["gatewayUrl"]})
+    return fn, gateways, None
 
 
 def _invoke_harness(
@@ -150,10 +166,11 @@ def _invoke_harness(
     bot_id: str,
     chat_id: Any,
     gateways: list[dict] | None = None,
+    prompt_template: str | None = None,
 ) -> tuple[str, int]:
     if fn.get("type") != "bedrock_harness":
         raise ValueError(f"unsupported function type: {fn.get('type')!r}")
-    prompt = (fn.get("promptTemplate") or "{text}").format(text=text)
+    prompt = (prompt_template or "{text}").format(text=text)
     payload: dict = {"prompt": prompt}
     if gateways:
         payload["gateways"] = gateways
@@ -272,9 +289,47 @@ def handler(event: dict[str, Any], _context: object) -> dict[str, Any]:
             _log("webhook.no_function", trace_id=trace_id, bot_id=bot_id)
             return _ok()
 
-        gateways = _resolve_gateways(tenant_id, fn.get("gatewayIds") or [])
+        harness_id = fn.get("harnessId")
+        if not harness_id:
+            _put_event(
+                bot_id,
+                "webhook.harness.error",
+                "function missing harnessId",
+                {
+                    "trace_id": trace_id,
+                    "chat_id": chat_id,
+                    "matched_cmd": matched_cmd,
+                    "reason": "missing_harnessId",
+                },
+            )
+            return _ok()
+
+        resolved_fn, gateways, reason = _resolve_harness(tenant_id, harness_id)
+        if resolved_fn is None:
+            _put_event(
+                bot_id,
+                "webhook.harness.error",
+                f"harness {reason}",
+                {
+                    "trace_id": trace_id,
+                    "chat_id": chat_id,
+                    "harnessId": harness_id,
+                    "matched_cmd": matched_cmd,
+                    "reason": reason,
+                },
+            )
+            _log("webhook.harness_unavailable", trace_id=trace_id, bot_id=bot_id, reason=reason)
+            return _ok()
+
         try:
-            reply, latency_ms = _invoke_harness(fn, text, bot_id, chat_id, gateways=gateways)
+            reply, latency_ms = _invoke_harness(
+                resolved_fn,
+                text,
+                bot_id,
+                chat_id,
+                gateways=gateways,
+                prompt_template=fn.get("promptTemplate"),
+            )
         except Exception as e:
             _log("webhook.harness_failed", trace_id=trace_id, bot_id=bot_id, error=str(e))
             _put_event(
@@ -284,9 +339,11 @@ def handler(event: dict[str, Any], _context: object) -> dict[str, Any]:
                 {
                     "trace_id": trace_id,
                     "chat_id": chat_id,
-                    "agentRuntimeArn": fn.get("agentRuntimeArn"),
+                    "harnessId": harness_id,
+                    "agentRuntimeArn": resolved_fn.get("agentRuntimeArn"),
                     "matched_cmd": matched_cmd,
                     "error": str(e),
+                    "reason": "invocation_failed",
                 },
             )
             return _ok()
@@ -301,7 +358,11 @@ def handler(event: dict[str, Any], _context: object) -> dict[str, Any]:
                 bot_id,
                 "webhook.error",
                 f"sendMessage failed: {e}",
-                {"trace_id": trace_id, "agentRuntimeArn": fn.get("agentRuntimeArn")},
+                {
+                    "trace_id": trace_id,
+                    "harnessId": harness_id,
+                    "agentRuntimeArn": resolved_fn.get("agentRuntimeArn"),
+                },
             )
 
         _put_event(
@@ -313,7 +374,8 @@ def handler(event: dict[str, Any], _context: object) -> dict[str, Any]:
                 "chat_id": chat_id,
                 "matched": matched,
                 "matched_cmd": matched_cmd,
-                "agentRuntimeArn": fn.get("agentRuntimeArn"),
+                "harnessId": harness_id,
+                "agentRuntimeArn": resolved_fn.get("agentRuntimeArn"),
                 "gatewayIds": [g["id"] for g in gateways],
                 "latencyMs": latency_ms,
                 "sent": sent,

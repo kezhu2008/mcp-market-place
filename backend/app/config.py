@@ -5,6 +5,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+# Compiled-in default container image for AgentCore harness runtimes.
+# Operators override via PLATFORM_HARNESS_IMAGE_URI for staged image rolls;
+# the default points at the latest platform-published artifact.
+DEFAULT_PLATFORM_HARNESS_IMAGE_URI = "public.ecr.aws/mcp-platform/harness:latest"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -15,6 +20,8 @@ class Settings:
     cognito_client_id: str
     webhook_base_url: str
     default_tenant_id: str  # Phase 1: single-tenant hardcoded
+    platform_harness_image_uri: str
+    platform_harness_role_arn: str  # required at create-harness time
 
 
 def load_settings() -> Settings:
@@ -26,6 +33,10 @@ def load_settings() -> Settings:
         cognito_client_id=os.environ.get("COGNITO_CLIENT_ID", ""),
         webhook_base_url=os.environ.get("WEBHOOK_BASE_URL", ""),
         default_tenant_id=os.environ.get("DEFAULT_TENANT_ID", "t_default"),
+        platform_harness_image_uri=os.environ.get(
+            "PLATFORM_HARNESS_IMAGE_URI", DEFAULT_PLATFORM_HARNESS_IMAGE_URI
+        ),
+        platform_harness_role_arn=os.environ.get("PLATFORM_HARNESS_ROLE_ARN", ""),
     )
 
 

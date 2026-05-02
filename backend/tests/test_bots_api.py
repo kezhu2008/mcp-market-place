@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-VALID_ARN = "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/sales-harness"
+PROVISIONED_HARNESS = {
+    "agentRuntimeArn": "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/h1",
+    "agentRuntimeId": "rt_h1",
+    "qualifier": None,
+}
 
 
 def _client(aws):
@@ -12,6 +16,26 @@ def _client(aws):
     from app.main import app
 
     return TestClient(app)
+
+
+def _make_harness(client, headers, name: str = "h"):
+    with patch(
+        "app.services.agentcore_harness.create",
+        return_value=PROVISIONED_HARNESS,
+    ):
+        r = client.post(
+            "/harnesses",
+            json={
+                "name": name,
+                "description": "",
+                "model": "anthropic.claude-sonnet-4-6",
+                "systemPrompt": "you are a helpful assistant",
+                "gatewayIds": [],
+            },
+            headers=headers,
+        )
+    assert r.status_code == 201, r.text
+    return r.json()
 
 
 def test_health(aws):
@@ -29,11 +53,11 @@ def test_secret_crud_and_bot_deploy_flow(aws):
     r = c.post("/secrets", json={"name": "tg", "description": "", "value": "botTOKEN"}, headers=headers)
     assert r.status_code == 201, r.text
     secret_id = r.json()["id"]
-    # Value must not leak
     assert "value" not in r.json()
 
-    # Create bot with a default harness function and a single command that
-    # inherits it (no per-command override).
+    harness = _make_harness(c, headers)
+
+    # Create bot pointing at the platform harness.
     r = c.post(
         "/bots",
         json={
@@ -42,23 +66,21 @@ def test_secret_crud_and_bot_deploy_flow(aws):
             "type": "telegram",
             "secretId": secret_id,
             "commands": [{"cmd": "/ping"}],
-            "defaultFunction": {"type": "bedrock_harness", "agentRuntimeArn": VALID_ARN},
+            "defaultFunction": {"type": "bedrock_harness", "harnessId": harness["id"]},
         },
         headers=headers,
     )
     assert r.status_code == 201, r.text
     bot = r.json()
     assert bot["status"] == "draft"
-    assert bot["defaultFunction"]["agentRuntimeArn"] == VALID_ARN
+    assert bot["defaultFunction"]["harnessId"] == harness["id"]
     assert bot["commands"] == [{"cmd": "/ping", "function": None}]
 
-    # Deploy with mocked telegram
     with patch("app.services.telegram.set_webhook", new=AsyncMock(return_value={})):
         r = c.post(f"/bots/{bot['id']}/deploy", headers=headers)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "deployed"
 
-    # Dashboard reflects it
     r = c.get("/dashboard", headers=headers)
     assert r.json()["botsDeployed"] == 1
 
@@ -90,7 +112,7 @@ def test_deploy_failure_flips_to_error(aws):
     assert r.json()["lastError"]
 
 
-def test_bot_create_rejects_bad_arn(aws):
+def test_bot_create_rejects_missing_harness(aws):
     c = _client(aws)
     headers = {"Authorization": "Bearer stub"}
 
@@ -103,11 +125,11 @@ def test_bot_create_rejects_bad_arn(aws):
             "name": "b",
             "secretId": secret_id,
             "commands": [],
-            "defaultFunction": {"type": "bedrock_harness", "agentRuntimeArn": "not-an-arn"},
+            "defaultFunction": {"type": "bedrock_harness", "harnessId": "hns_does_not_exist"},
         },
         headers=headers,
     )
-    assert r.status_code == 422, r.text
+    assert r.status_code == 404, r.text
 
 
 def test_patch_clears_default_function(aws):
@@ -116,6 +138,7 @@ def test_patch_clears_default_function(aws):
 
     r = c.post("/secrets", json={"name": "tg", "description": "", "value": "x"}, headers=headers)
     secret_id = r.json()["id"]
+    harness = _make_harness(c, headers)
 
     r = c.post(
         "/bots",
@@ -123,13 +146,12 @@ def test_patch_clears_default_function(aws):
             "name": "b",
             "secretId": secret_id,
             "commands": [],
-            "defaultFunction": {"type": "bedrock_harness", "agentRuntimeArn": VALID_ARN},
+            "defaultFunction": {"type": "bedrock_harness", "harnessId": harness["id"]},
         },
         headers=headers,
     )
     bot_id = r.json()["id"]
 
-    # Explicit null clears.
     r = c.patch(f"/bots/{bot_id}", json={"defaultFunction": None}, headers=headers)
     assert r.status_code == 200, r.text
     assert r.json()["defaultFunction"] is None
@@ -141,6 +163,7 @@ def test_patch_updates_command_function(aws):
 
     r = c.post("/secrets", json={"name": "tg", "description": "", "value": "x"}, headers=headers)
     secret_id = r.json()["id"]
+    harness = _make_harness(c, headers)
 
     r = c.post(
         "/bots",
@@ -159,7 +182,7 @@ def test_patch_updates_command_function(aws):
             "commands": [
                 {
                     "cmd": "/start",
-                    "function": {"type": "bedrock_harness", "agentRuntimeArn": VALID_ARN},
+                    "function": {"type": "bedrock_harness", "harnessId": harness["id"]},
                 }
             ]
         },
@@ -167,7 +190,7 @@ def test_patch_updates_command_function(aws):
     )
     assert r.status_code == 200, r.text
     cmds = r.json()["commands"]
-    assert cmds[0]["function"]["agentRuntimeArn"] == VALID_ARN
+    assert cmds[0]["function"]["harnessId"] == harness["id"]
 
 
 def test_test_function_requires_configured_function(aws):
@@ -198,6 +221,7 @@ def test_test_function_invokes_harness(aws):
 
     r = c.post("/secrets", json={"name": "tg", "description": "", "value": "x"}, headers=headers)
     secret_id = r.json()["id"]
+    harness = _make_harness(c, headers)
 
     r = c.post(
         "/bots",
@@ -205,7 +229,7 @@ def test_test_function_invokes_harness(aws):
             "name": "b",
             "secretId": secret_id,
             "commands": [],
-            "defaultFunction": {"type": "bedrock_harness", "agentRuntimeArn": VALID_ARN},
+            "defaultFunction": {"type": "bedrock_harness", "harnessId": harness["id"]},
         },
         headers=headers,
     )
@@ -226,3 +250,6 @@ def test_test_function_invokes_harness(aws):
     assert body["output"] == "hello back"
     assert body["latencyMs"] == 123
     assert m.call_count == 1
+    # The synthetic fn dict carries the resolved ARN, not the user's harnessId.
+    fn = m.call_args.args[0]
+    assert fn["agentRuntimeArn"] == PROVISIONED_HARNESS["agentRuntimeArn"]
