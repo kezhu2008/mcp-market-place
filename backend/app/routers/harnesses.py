@@ -137,34 +137,33 @@ async def redeploy_harness(
     if item.get("status") == "creating":
         raise HTTPException(409, "harness is creating; wait for it to settle")
 
-    # Best-effort teardown of the prior runtime — destroy is idempotent.
-    if item.get("agentRuntimeArn"):
-        agentcore_harness.destroy(
-            agent_runtime_arn=item.get("agentRuntimeArn"),
-            region=settings.region,
-        )
-
     dynamo.update_harness(
         p.tenant_id,
         harness_id,
-        {
-            "status": "creating",
-            "lastError": None,
-            "agentRuntimeArn": None,
-            "agentRuntimeId": None,
-            "qualifier": None,
-        },
+        {"status": "creating", "lastError": None},
     )
 
     try:
-        provisioned = agentcore_harness.create(
-            name=f"{p.tenant_id}_{harness_id}",
-            model=item["model"],
-            system_prompt=item.get("systemPrompt") or "",
-            image_uri=settings.platform_harness_image_uri,
-            role_arn=settings.platform_harness_role_arn,
-            region=settings.region,
-        )
+        if item.get("agentRuntimeId"):
+            # Prefer update — preserves arn/id and avoids the async-delete
+            # race that delete+recreate hits.
+            provisioned = agentcore_harness.update(
+                agent_runtime_id=item["agentRuntimeId"],
+                model=item["model"],
+                system_prompt=item.get("systemPrompt") or "",
+                image_uri=settings.platform_harness_image_uri,
+                role_arn=settings.platform_harness_role_arn,
+                region=settings.region,
+            )
+        else:
+            provisioned = agentcore_harness.create(
+                name=f"{p.tenant_id}_{harness_id}",
+                model=item["model"],
+                system_prompt=item.get("systemPrompt") or "",
+                image_uri=settings.platform_harness_image_uri,
+                role_arn=settings.platform_harness_role_arn,
+                region=settings.region,
+            )
     except Exception as e:
         dynamo.update_harness(
             p.tenant_id,

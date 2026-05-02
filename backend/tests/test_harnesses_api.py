@@ -158,29 +158,63 @@ def test_redeploy_harness_success(aws):
 
     hns = _create_harness(c, headers)
 
-    new_provisioned = {
-        "agentRuntimeArn": "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/h2",
-        "agentRuntimeId": "rt_h2",
-        "qualifier": "2",
+    # Update preserves arn/id; just bumps the underlying runtime version.
+    updated_provisioned = {
+        "agentRuntimeArn": PROVISIONED["agentRuntimeArn"],
+        "agentRuntimeId": PROVISIONED["agentRuntimeId"],
+        "qualifier": None,
     }
-    with (
-        patch("app.services.agentcore_harness.destroy") as destroy,
-        patch("app.services.agentcore_harness.create", return_value=new_provisioned) as create,
-    ):
+    with patch(
+        "app.services.agentcore_harness.update", return_value=updated_provisioned
+    ) as update:
         r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
 
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "ready"
-    assert body["agentRuntimeArn"] == new_provisioned["agentRuntimeArn"]
-    assert body["agentRuntimeId"] == new_provisioned["agentRuntimeId"]
-    assert body["qualifier"] == "2"
+    assert body["agentRuntimeArn"] == PROVISIONED["agentRuntimeArn"]
+    assert body["agentRuntimeId"] == PROVISIONED["agentRuntimeId"]
+    assert body["qualifier"] is None
     assert body["lastError"] is None
-    destroy.assert_called_once()
-    # Recreate should reuse the harness's stored model + system prompt.
-    kwargs = create.call_args.kwargs
+    # Update should reuse the harness's stored model + system prompt and
+    # target the existing runtime by id.
+    kwargs = update.call_args.kwargs
+    assert kwargs["agent_runtime_id"] == PROVISIONED["agentRuntimeId"]
     assert kwargs["model"] == "anthropic.claude-sonnet-4-6"
     assert kwargs["system_prompt"] == "you are kind"
+
+
+def test_redeploy_harness_creates_when_no_runtime_id(aws):
+    """If a prior create failed before storing a runtime id, redeploy
+    falls back to a fresh create."""
+    c = _client(aws)
+    headers = {"Authorization": "Bearer stub"}
+
+    hns = _create_harness(c, headers)
+
+    # Simulate a half-provisioned harness — no runtime id on record.
+    from app.services import dynamo
+
+    dynamo.update_harness(
+        hns["tenantId"],
+        hns["id"],
+        {"status": "error", "agentRuntimeId": None, "agentRuntimeArn": None},
+    )
+
+    fresh = {
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/h2",
+        "agentRuntimeId": "rt_h2",
+        "qualifier": None,
+    }
+    with (
+        patch("app.services.agentcore_harness.update") as update,
+        patch("app.services.agentcore_harness.create", return_value=fresh) as create,
+    ):
+        r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
+    assert r.status_code == 200, r.text
+    update.assert_not_called()
+    create.assert_called_once()
+    assert r.json()["agentRuntimeId"] == "rt_h2"
 
 
 def test_redeploy_harness_not_found(aws):
@@ -212,9 +246,8 @@ def test_redeploy_harness_failure_marks_error(aws):
 
     hns = _create_harness(c, headers)
 
-    with (
-        patch("app.services.agentcore_harness.destroy"),
-        patch("app.services.agentcore_harness.create", side_effect=RuntimeError("aws boom")),
+    with patch(
+        "app.services.agentcore_harness.update", side_effect=RuntimeError("aws boom")
     ):
         r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
     assert r.status_code == 502, r.text
