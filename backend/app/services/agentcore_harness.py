@@ -127,6 +127,23 @@ def update(
     }
 
 
+def find_by_name(name: str, region: str) -> dict | None:
+    """Look up an existing AgentCore runtime by name. Used by redeploy
+    to adopt a runtime whose id was lost from our DB (e.g. a prior
+    failed redeploy left ``agentRuntimeId = null``). Returns
+    ``{agentRuntimeArn, agentRuntimeId}`` or ``None``."""
+    ctrl = _ctrl(region)
+    paginator = ctrl.get_paginator("list_agent_runtimes")
+    for page in paginator.paginate():
+        for r in page.get("agentRuntimes", []):
+            if r.get("agentRuntimeName") == name:
+                return {
+                    "agentRuntimeArn": r.get("agentRuntimeArn"),
+                    "agentRuntimeId": r.get("agentRuntimeId"),
+                }
+    return None
+
+
 def destroy(agent_runtime_arn: str | None, region: str) -> None:
     """Tear down a runtime. Idempotent; swallows individual failures so a
     broken runtime can still be removed from our DB."""

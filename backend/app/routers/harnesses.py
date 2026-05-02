@@ -143,12 +143,26 @@ async def redeploy_harness(
         {"status": "creating", "lastError": None},
     )
 
+    runtime_name = f"{p.tenant_id}_{harness_id}"
+    runtime_id = item.get("agentRuntimeId")
+    # If our DB lost the pointer (e.g. an earlier failed redeploy nulled
+    # it), try to adopt the existing runtime by name before falling back
+    # to create — otherwise create would hit ConflictException.
+    if not runtime_id:
+        try:
+            existing = agentcore_harness.find_by_name(runtime_name, settings.region)
+        except Exception as e:  # noqa: BLE001 — lookup is best-effort
+            log.log(30, "harness.adopt_lookup_failed", harness_id=harness_id, error=str(e))
+            existing = None
+        if existing:
+            runtime_id = existing["agentRuntimeId"]
+
     try:
-        if item.get("agentRuntimeId"):
+        if runtime_id:
             # Prefer update — preserves arn/id and avoids the async-delete
             # race that delete+recreate hits.
             provisioned = agentcore_harness.update(
-                agent_runtime_id=item["agentRuntimeId"],
+                agent_runtime_id=runtime_id,
                 model=item["model"],
                 system_prompt=item.get("systemPrompt") or "",
                 image_uri=settings.platform_harness_image_uri,
@@ -157,7 +171,7 @@ async def redeploy_harness(
             )
         else:
             provisioned = agentcore_harness.create(
-                name=f"{p.tenant_id}_{harness_id}",
+                name=runtime_name,
                 model=item["model"],
                 system_prompt=item.get("systemPrompt") or "",
                 image_uri=settings.platform_harness_image_uri,
