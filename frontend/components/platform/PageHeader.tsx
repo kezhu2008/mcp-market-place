@@ -23,7 +23,7 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("px-s-8 pt-s-6 pb-0 border-b border-border", className)}>
+    <div className={cn("px-s-5 md:px-s-8 pt-s-5 md:pt-s-6 pb-0 border-b border-border", className)}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <div className="font-mono text-mono-sm text-text-mute mb-[6px] flex items-center gap-[4px]">
           {breadcrumbs.map((b, i) => (
@@ -38,15 +38,15 @@ export function PageHeader({
           ))}
         </div>
       )}
-      <div className="flex items-start gap-[12px]">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-[10px] sm:gap-[12px]">
         <div className="flex-1 min-w-0">
-          <h1 className="text-h1 flex items-center gap-[10px]">{title}</h1>
+          <h1 className="text-h1 flex flex-wrap items-center gap-[8px] md:gap-[10px]">{title}</h1>
           {description && <p className="text-body-sm text-text-dim mt-[4px]">{description}</p>}
         </div>
-        {right && <div className="shrink-0 flex items-center gap-[8px]">{right}</div>}
+        {right && <div className="shrink-0 flex flex-wrap items-center gap-[8px]">{right}</div>}
       </div>
       {tabs && (
-        <div className="flex items-center gap-0 mt-s-6 -mb-px">
+        <div className="flex items-center gap-0 mt-s-6 -mb-px overflow-x-auto">
           {tabs.map((t) => {
             const active = t.id === activeTab;
             return (

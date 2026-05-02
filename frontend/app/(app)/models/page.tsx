@@ -5,7 +5,7 @@ export default function ModelsPage() {
   return (
     <>
       <PageHeader title="Models" description="BYO LLM credentials." />
-      <div className="p-s-8"><EmptyState title="Models — coming in Phase 2" /></div>
+      <div className="p-s-5 md:p-s-8"><EmptyState title="Models — coming in Phase 2" /></div>
     </>
   );
 }

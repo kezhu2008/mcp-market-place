@@ -5,7 +5,7 @@ export default function McpServersPage() {
   return (
     <>
       <PageHeader title="MCP Servers" description="Bundles of tools exposed via Bedrock AgentCore Gateway." />
-      <div className="p-s-8"><EmptyState title="MCP Servers — coming in Phase 2" /></div>
+      <div className="p-s-5 md:p-s-8"><EmptyState title="MCP Servers — coming in Phase 2" /></div>
     </>
   );
 }

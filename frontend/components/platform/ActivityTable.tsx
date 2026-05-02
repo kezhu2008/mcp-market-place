@@ -33,42 +33,44 @@ export function ActivityTable({ events }: { events: Event[] }) {
   }
 
   return (
-    <div className="card overflow-hidden">
-      <div className={cn(GRID, "bg-surface-2 px-[14px] py-[8px] overline")}>
-        <div>time</div>
-        <div>event</div>
-        <div>message</div>
-        <div>actor</div>
-        <div />
-      </div>
-      {events.map((e) => {
-        const isOpen = expanded === e.id;
-        return (
-          <div key={e.id} className="border-t border-border">
-            <button
-              onClick={() => setExpanded(isOpen ? null : e.id)}
-              className={cn(
-                GRID,
-                "w-full items-center px-[14px] py-[9px] text-left font-mono text-mono text-text-dim hover:bg-surface-2 transition-colors duration-75"
+    <div className="overflow-x-auto">
+      <div className="card overflow-hidden min-w-[640px]">
+        <div className={cn(GRID, "bg-surface-2 px-[14px] py-[8px] overline")}>
+          <div>time</div>
+          <div>event</div>
+          <div>message</div>
+          <div>actor</div>
+          <div />
+        </div>
+        {events.map((e) => {
+          const isOpen = expanded === e.id;
+          return (
+            <div key={e.id} className="border-t border-border">
+              <button
+                onClick={() => setExpanded(isOpen ? null : e.id)}
+                className={cn(
+                  GRID,
+                  "w-full items-center px-[14px] py-[9px] text-left font-mono text-mono text-text-dim hover:bg-surface-2 transition-colors duration-75"
+                )}
+              >
+                <span>{relativeTime(e.ts)}</span>
+                <span className="flex items-center gap-[6px]">
+                  <span className={cn("w-[5px] h-[5px] rounded-full", DOT_COLOR[e.type] ?? "bg-text-dim")} />
+                  {e.type}
+                </span>
+                <span className="text-text truncate">{e.msg}</span>
+                <span className="truncate">{e.actor}</span>
+                <span className="text-text-mute">{isOpen ? "−" : "+"}</span>
+              </button>
+              {isOpen && (
+                <pre className="bg-surface-2 border-t border-border px-[14px] py-[10px] font-mono text-mono-sm text-text-dim overflow-x-auto">
+                  {JSON.stringify(e.details, null, 2)}
+                </pre>
               )}
-            >
-              <span>{relativeTime(e.ts)}</span>
-              <span className="flex items-center gap-[6px]">
-                <span className={cn("w-[5px] h-[5px] rounded-full", DOT_COLOR[e.type] ?? "bg-text-dim")} />
-                {e.type}
-              </span>
-              <span className="text-text truncate">{e.msg}</span>
-              <span className="truncate">{e.actor}</span>
-              <span className="text-text-mute">{isOpen ? "−" : "+"}</span>
-            </button>
-            {isOpen && (
-              <pre className="bg-surface-2 border-t border-border px-[14px] py-[10px] font-mono text-mono-sm text-text-dim overflow-x-auto">
-                {JSON.stringify(e.details, null, 2)}
-              </pre>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

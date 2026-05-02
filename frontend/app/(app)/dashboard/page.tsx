@@ -50,8 +50,8 @@ export default function DashboardPage() {
           </Link>
         }
       />
-      <div className="p-s-8 flex flex-col gap-s-6">
-        <div className="grid grid-cols-4 gap-[10px]">
+      <div className="p-s-5 md:p-s-8 flex flex-col gap-s-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-[10px]">
           <KpiCard label="deployed" value={summary?.botsDeployed ?? "—"} accentBar />
           <KpiCard label="drafts" value={summary?.botsDraft ?? "—"} />
           <KpiCard label="errors" value={summary?.botsError ?? "—"} />
@@ -74,7 +74,7 @@ export default function DashboardPage() {
           ) : bots.length === 0 ? (
             <EmptyState title="no bots yet" sub="create one to get started" />
           ) : (
-            <div className="grid grid-cols-3 gap-[12px]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-[12px]">
               {bots.slice(0, 6).map((b) => <BotCard key={b.id} bot={b} />)}
             </div>
           )}
