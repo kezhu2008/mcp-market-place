@@ -84,41 +84,15 @@ data "aws_iam_policy_document" "perms" {
     ]
     resources = [var.secrets_prefix_arn]
   }
-  # Needed by POST /bots/{id}/test-function. Mirrors the webhook lambda's
-  # permission. If the test endpoint is removed, drop this statement too.
+  # AgentCore control plane + data plane. The IAM surface for AgentCore is
+  # still firming up — CreateAgentRuntime implicitly requires
+  # CreateAgentRuntimeEndpoint, there are sibling actions for versions /
+  # endpoints / credential providers, plus data-plane Invoke* (Runtime,
+  # MCPTool). Rather than enumerate every action and chase
+  # AccessDeniedException through deploys, grant the whole namespace on
+  # `*`. Tighten once the action list is stable.
   statement {
-    actions   = ["bedrock-agentcore:InvokeAgentRuntime"]
-    resources = ["arn:aws:bedrock-agentcore:*:*:runtime/*"]
-  }
-  # Needed by /gateways CRUD: the backend provisions AgentCore gateways
-  # from an OpenAPI spec + token (CreateApiKeyCredentialProvider →
-  # CreateGateway → CreateGatewayTarget) and tears them down on delete.
-  # Note: the boto3 client name is `bedrock-agentcore-control`, but the
-  # IAM action prefix is `bedrock-agentcore` for both control and data
-  # plane operations.
-  statement {
-    actions = [
-      "bedrock-agentcore:CreateGateway",
-      "bedrock-agentcore:CreateGatewayTarget",
-      "bedrock-agentcore:CreateApiKeyCredentialProvider",
-      "bedrock-agentcore:DeleteGateway",
-      "bedrock-agentcore:DeleteGatewayTarget",
-      "bedrock-agentcore:DeleteApiKeyCredentialProvider",
-      "bedrock-agentcore:GetGateway",
-      "bedrock-agentcore:ListGateways",
-    ]
-    resources = ["*"]
-  }
-  # Needed by /harnesses CRUD: the backend provisions AgentCore runtimes
-  # (CreateAgentRuntime) and tears them down on delete.
-  statement {
-    actions = [
-      "bedrock-agentcore:CreateAgentRuntime",
-      "bedrock-agentcore:UpdateAgentRuntime",
-      "bedrock-agentcore:DeleteAgentRuntime",
-      "bedrock-agentcore:GetAgentRuntime",
-      "bedrock-agentcore:ListAgentRuntimes",
-    ]
+    actions   = ["bedrock-agentcore:*"]
     resources = ["*"]
   }
   # CreateAgentRuntime attaches the platform harness role to the new runtime;
@@ -131,12 +105,6 @@ data "aws_iam_policy_document" "perms" {
     resources = [
       var.platform_harness_role_arn != "" ? var.platform_harness_role_arn : "arn:aws:iam::000000000000:role/platform-harness-unconfigured",
     ]
-  }
-  # Gateway data-plane invocation for POST /gateways/{id}/test
-  # (SigV4-signed tools/list against the gateway URL).
-  statement {
-    actions   = ["bedrock-agentcore:InvokeMCPTool"]
-    resources = ["arn:aws:bedrock-agentcore:*:*:gateway/*"]
   }
 }
 
