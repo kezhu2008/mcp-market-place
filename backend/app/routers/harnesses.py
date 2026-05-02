@@ -122,6 +122,72 @@ async def update_harness_gateways(
     return _to_model(updated)
 
 
+@router.post("/{harness_id}/redeploy", response_model=Harness)
+async def redeploy_harness(
+    harness_id: str,
+    p: Principal = Depends(current_principal),
+) -> Harness:
+    """Re-provision an existing harness. Tears down the prior AgentCore
+    runtime (if any) and re-creates with the harness's stored config.
+    Allowed when status is ``ready`` or ``error``; refused while
+    ``creating`` to avoid racing an in-flight provision."""
+    item = dynamo.get_harness(p.tenant_id, harness_id)
+    if not item:
+        raise HTTPException(404, "harness not found")
+    if item.get("status") == "creating":
+        raise HTTPException(409, "harness is creating; wait for it to settle")
+
+    # Best-effort teardown of the prior runtime — destroy is idempotent.
+    if item.get("agentRuntimeArn"):
+        agentcore_harness.destroy(
+            agent_runtime_arn=item.get("agentRuntimeArn"),
+            region=settings.region,
+        )
+
+    dynamo.update_harness(
+        p.tenant_id,
+        harness_id,
+        {
+            "status": "creating",
+            "lastError": None,
+            "agentRuntimeArn": None,
+            "agentRuntimeId": None,
+            "qualifier": None,
+        },
+    )
+
+    try:
+        provisioned = agentcore_harness.create(
+            name=f"{p.tenant_id}_{harness_id}",
+            model=item["model"],
+            system_prompt=item.get("systemPrompt") or "",
+            image_uri=settings.platform_harness_image_uri,
+            role_arn=settings.platform_harness_role_arn,
+            region=settings.region,
+        )
+    except Exception as e:
+        dynamo.update_harness(
+            p.tenant_id,
+            harness_id,
+            {"status": "error", "lastError": str(e)},
+        )
+        log.log(40, "harness.redeploy_failed", harness_id=harness_id, error=str(e))
+        raise HTTPException(502, f"harness redeploy failed: {e}") from e
+
+    updated = dynamo.update_harness(
+        p.tenant_id,
+        harness_id,
+        {
+            "status": "ready",
+            "agentRuntimeArn": provisioned["agentRuntimeArn"],
+            "agentRuntimeId": provisioned["agentRuntimeId"],
+            "qualifier": provisioned.get("qualifier"),
+        },
+    )
+    log.log(20, "harness.redeployed", harness_id=harness_id, actor=p.email)
+    return _to_model(updated)
+
+
 @router.post("/{harness_id}/test", response_model=TestFunctionResponse)
 async def test_harness(
     harness_id: str,

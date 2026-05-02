@@ -152,6 +152,78 @@ def test_test_harness_invokes(aws):
     assert kwargs["gateways"] == [{"id": gw["id"], "url": "https://gw.example/mcp/g1"}]
 
 
+def test_redeploy_harness_success(aws):
+    c = _client(aws)
+    headers = {"Authorization": "Bearer stub"}
+
+    hns = _create_harness(c, headers)
+
+    new_provisioned = {
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:ap-southeast-2:668532754740:runtime/h2",
+        "agentRuntimeId": "rt_h2",
+        "qualifier": "2",
+    }
+    with (
+        patch("app.services.agentcore_harness.destroy") as destroy,
+        patch("app.services.agentcore_harness.create", return_value=new_provisioned) as create,
+    ):
+        r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "ready"
+    assert body["agentRuntimeArn"] == new_provisioned["agentRuntimeArn"]
+    assert body["agentRuntimeId"] == new_provisioned["agentRuntimeId"]
+    assert body["qualifier"] == "2"
+    assert body["lastError"] is None
+    destroy.assert_called_once()
+    # Recreate should reuse the harness's stored model + system prompt.
+    kwargs = create.call_args.kwargs
+    assert kwargs["model"] == "anthropic.claude-sonnet-4-6"
+    assert kwargs["system_prompt"] == "you are kind"
+
+
+def test_redeploy_harness_not_found(aws):
+    c = _client(aws)
+    headers = {"Authorization": "Bearer stub"}
+
+    r = c.post("/harnesses/hns_doesnotexist/redeploy", headers=headers)
+    assert r.status_code == 404
+
+
+def test_redeploy_harness_rejects_when_creating(aws):
+    c = _client(aws)
+    headers = {"Authorization": "Bearer stub"}
+
+    hns = _create_harness(c, headers)
+
+    # Force the harness back to "creating" to simulate an in-flight provision.
+    from app.services import dynamo
+
+    dynamo.update_harness(hns["tenantId"], hns["id"], {"status": "creating"})
+
+    r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
+    assert r.status_code == 409, r.text
+
+
+def test_redeploy_harness_failure_marks_error(aws):
+    c = _client(aws)
+    headers = {"Authorization": "Bearer stub"}
+
+    hns = _create_harness(c, headers)
+
+    with (
+        patch("app.services.agentcore_harness.destroy"),
+        patch("app.services.agentcore_harness.create", side_effect=RuntimeError("aws boom")),
+    ):
+        r = c.post(f"/harnesses/{hns['id']}/redeploy", headers=headers)
+    assert r.status_code == 502, r.text
+
+    after = c.get(f"/harnesses/{hns['id']}", headers=headers).json()
+    assert after["status"] == "error"
+    assert "aws boom" in (after["lastError"] or "")
+
+
 def test_patch_harness_gateways(aws):
     c = _client(aws)
     headers = {"Authorization": "Bearer stub"}
