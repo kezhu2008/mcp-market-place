@@ -29,15 +29,23 @@ resource "aws_iam_role" "role" {
 }
 
 data "aws_iam_policy_document" "perms" {
-  // Foundation model access. Scoping to a specific model is brittle when
-  // the platform exposes a dropdown of allowed models; use the foundation-
-  // model arn pattern. Tighten if your account has a smaller allowlist.
+  // Foundation model + inference profile access. Inference profiles
+  // (`global.` / `apac.` / `au.`) are the only on-demand-throughput path
+  // for newer Anthropic models in ap-southeast-2 — invoking those
+  // requires bedrock:InvokeModel on BOTH the profile resource itself
+  // and on each underlying region's foundation-model arn (the profile
+  // does cross-region routing under the hood). Tighten if your account
+  // has a smaller allowlist.
   statement {
     actions = [
       "bedrock:InvokeModel",
       "bedrock:InvokeModelWithResponseStream",
     ]
-    resources = ["arn:aws:bedrock:*::foundation-model/*"]
+    resources = [
+      "arn:aws:bedrock:*::foundation-model/*",
+      "arn:aws:bedrock:*:*:inference-profile/*",
+      "arn:aws:bedrock:*:*:application-inference-profile/*",
+    ]
   }
   // Call platform gateways as MCP tools. Same wildcards as the backend
   // lambda's grant — the runtime acts on behalf of the harness's tenant.
